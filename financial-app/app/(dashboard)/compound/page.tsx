@@ -2,6 +2,8 @@
 import { useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { compoundSeries, cagr } from '@/lib/math-engine'
+import ScenarioBar from '@/components/ScenarioBar'
+import { downloadCSV } from '@/lib/csv-export'
 
 const FREQ_MAP: Record<string, number> = { 每月: 12, 每季: 4, 每年: 1, 每日: 365 }
 const RATES = [2, 4, 6, 7, 8, 10, 12, 15]
@@ -40,6 +42,22 @@ export default function CompoundPage() {
   const [years, setYears]     = useState(20)
   const [freq, setFreq]       = useState('每月')
 
+  const currentParams = { initial, monthly, rate, years, freq }
+
+  const handleLoad = (params: Record<string, unknown>) => {
+    if (typeof params.initial === 'number') setInitial(params.initial)
+    if (typeof params.monthly === 'number') setMonthly(params.monthly)
+    if (typeof params.rate    === 'number') setRate(params.rate)
+    if (typeof params.years   === 'number') setYears(params.years)
+    if (typeof params.freq    === 'string') setFreq(params.freq)
+  }
+
+  const handleExport = () => {
+    const headers = ['年', '本金', '利息', '總餘額']
+    const rows = chartData.map(r => [r.year, r.本金, r.利息, r.本金 + r.利息])
+    downloadCSV('複利計算.csv', headers, rows)
+  }
+
   const compFreq   = FREQ_MAP[freq]
   const annualRate = rate / 100
   const data       = compoundSeries(initial, annualRate, years, monthly, compFreq)
@@ -71,6 +89,10 @@ export default function CompoundPage() {
   return (
     <div>
       <h1 className="text-xl font-semibold text-gray-900 mb-6">複利計算器</h1>
+
+      <div className="mb-4">
+        <ScenarioBar page="compound" currentParams={currentParams} onLoad={handleLoad} onExport={handleExport} />
+      </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
         <aside className="lg:w-68 shrink-0">

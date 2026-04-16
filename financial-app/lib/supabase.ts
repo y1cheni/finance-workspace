@@ -22,6 +22,22 @@ export type Database = {
           page: string
         }
       }
+      saved_scenarios: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          page: string
+          params: Record<string, unknown>
+          created_at: string
+        }
+        Insert: {
+          user_id: string
+          name: string
+          page: string
+          params: Record<string, unknown>
+        }
+      }
     }
   }
 }
