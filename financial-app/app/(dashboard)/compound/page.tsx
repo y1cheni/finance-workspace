@@ -1,10 +1,12 @@
 'use client'
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { compoundSeries, cagr } from '@/lib/math-engine'
 
 const FREQ_MAP: Record<string, number> = { 每月: 12, 每季: 4, 每年: 1, 每日: 365 }
 const RATES = [2, 4, 6, 7, 8, 10, 12, 15]
+const PRIMARY = '#96B3D1'
+const SECONDARY = '#94A3B8'
 
 function fmt(n: number) { return `NT$ ${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
 
@@ -15,15 +17,16 @@ function Slider({ label, value, min, max, step, format, onChange }: {
   return (
     <div className="mb-5">
       <div className="flex justify-between mb-1">
-        <label className="text-sm font-medium text-gray-700">{label}</label>
-        <span className="text-sm font-semibold text-blue-600">{format(value)}</span>
+        <label className="text-sm font-medium text-gray-600">{label}</label>
+        <span className="text-sm font-semibold text-gray-900">{format(value)}</span>
       </div>
       <input
         type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(Number(e.target.value))}
-        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+        className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer"
+        style={{ accentColor: PRIMARY }}
       />
-      <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+      <div className="flex justify-between text-xs text-gray-300 mt-0.5">
         <span>{format(min)}</span><span>{format(max)}</span>
       </div>
     </div>
@@ -31,28 +34,25 @@ function Slider({ label, value, min, max, step, format, onChange }: {
 }
 
 export default function CompoundPage() {
-  const [initial, setInitial]         = useState(1_000_000)
-  const [monthly, setMonthly]         = useState(10_000)
-  const [rate, setRate]               = useState(7)
-  const [years, setYears]             = useState(20)
-  const [freq, setFreq]               = useState('每月')
+  const [initial, setInitial] = useState(1_000_000)
+  const [monthly, setMonthly] = useState(10_000)
+  const [rate, setRate]       = useState(7)
+  const [years, setYears]     = useState(20)
+  const [freq, setFreq]       = useState('每月')
 
-  const compFreq = FREQ_MAP[freq]
+  const compFreq   = FREQ_MAP[freq]
   const annualRate = rate / 100
+  const data       = compoundSeries(initial, annualRate, years, monthly, compFreq)
 
-  const data = compoundSeries(initial, annualRate, years, monthly, compFreq)
-
-  // Downsample for chart (max 100 points)
   const step = Math.max(1, Math.floor(data.years.length / 100))
   const chartData = data.years
     .filter((_, i) => i % step === 0 || i === data.years.length - 1)
-    .map((y, i) => {
+    .map((_, i) => {
       const idx = Math.min(i * step, data.years.length - 1)
       return {
         year: data.years[idx].toFixed(1),
         本金: Math.round(data.contributions[idx]),
         利息: Math.round(data.interest[idx]),
-        總餘額: Math.round(data.balance[idx]),
       }
     })
 
@@ -61,7 +61,6 @@ export default function CompoundPage() {
   const totalInterest = data.interest[data.interest.length - 1]
   const effectiveCagr = cagr(initial, finalBalance, years)
 
-  // Sensitivity table
   const sensitivityRows = RATES.map(r => {
     const d  = compoundSeries(initial, r / 100, years, monthly, compFreq)
     const fb = d.balance[d.balance.length - 1]
@@ -71,13 +70,12 @@ export default function CompoundPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">💰 複利計算器</h1>
+      <h1 className="text-xl font-semibold text-gray-900 mb-6">複利計算器</h1>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Sidebar controls */}
-        <aside className="lg:w-72 shrink-0">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <h2 className="font-semibold text-gray-800 mb-4">參數設定</h2>
+        <aside className="lg:w-68 shrink-0">
+          <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">參數設定</p>
 
             <Slider label="初始本金" value={initial} min={0} max={5_000_000} step={10_000}
               format={fmt} onChange={setInitial} />
@@ -88,76 +86,83 @@ export default function CompoundPage() {
             <Slider label="投資年限" value={years} min={1} max={50} step={1}
               format={v => `${v} 年`} onChange={setYears} />
 
-            <div className="mb-2">
-              <label className="text-sm font-medium text-gray-700 block mb-1">複利頻率</label>
+            <div>
+              <p className="text-sm font-medium text-gray-600 mb-2">複利頻率</p>
               <div className="grid grid-cols-2 gap-1">
                 {Object.keys(FREQ_MAP).map(f => (
                   <button key={f} onClick={() => setFreq(f)}
                     className={`py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      freq === f ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}>{f}</button>
+                      freq === f ? 'text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                    }`}
+                    style={freq === f ? { backgroundColor: PRIMARY } : {}}
+                  >{f}</button>
                 ))}
               </div>
             </div>
           </div>
         </aside>
 
-        {/* Main content */}
         <div className="flex-1 space-y-5">
-          {/* Metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: '最終餘額',    value: fmt(finalBalance),                   color: 'text-blue-700'  },
-              { label: '總投入本金',  value: fmt(totalContrib),                   color: 'text-gray-700'  },
-              { label: '累計利息',    value: fmt(totalInterest),                  color: 'text-green-600' },
-              { label: '實際 CAGR',   value: `${(effectiveCagr * 100).toFixed(2)}%`, color: 'text-purple-600' },
+              { label: '最終餘額',   value: fmt(finalBalance),                        primary: true  },
+              { label: '總投入本金', value: fmt(totalContrib),                        primary: false },
+              { label: '累計利息',   value: fmt(totalInterest),                       primary: false },
+              { label: '實際 CAGR',  value: `${(effectiveCagr * 100).toFixed(2)}%`,  primary: false },
             ].map(m => (
-              <div key={m.label} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-                <p className="text-xs text-gray-500">{m.label}</p>
-                <p className={`text-lg font-bold mt-1 ${m.color}`}>{m.value}</p>
+              <div key={m.label} className="bg-white rounded-xl border border-gray-100 p-4">
+                <p className="text-xs text-gray-400">{m.label}</p>
+                <p className={`text-lg font-bold mt-1 ${m.primary ? '' : 'text-gray-900'}`}
+                   style={m.primary ? { color: PRIMARY } : {}}>
+                  {m.value}
+                </p>
               </div>
             ))}
           </div>
 
-          {/* Chart */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <h2 className="font-semibold text-gray-800 mb-4">
-              複利成長曲線（{freq}複利，年利率 {rate.toFixed(1)}%）
-            </h2>
-            <ResponsiveContainer width="100%" height={340}>
+          <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <p className="text-sm font-medium text-gray-700 mb-4">
+              複利成長曲線 — {freq}複利，年利率 {rate.toFixed(1)}%
+            </p>
+            <ResponsiveContainer width="100%" height={320}>
               <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
                 <XAxis dataKey="year" label={{ value: '年', position: 'insideRight', offset: 10 }}
-                  tick={{ fontSize: 11 }} />
-                <YAxis tickFormatter={v => `${(v/10000).toFixed(0)}萬`} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                <Legend />
-                <Area type="monotone" dataKey="本金"  stackId="1" stroke="#636EFA" fill="rgba(99,110,250,0.3)" />
-                <Area type="monotone" dataKey="利息"  stackId="1" stroke="#EF553B" fill="rgba(239,85,59,0.3)"  />
+                  tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={v => `${(v/10000).toFixed(0)}萬`}
+                  tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                <Tooltip formatter={(v: any) => fmt(Number(v))}
+                  contentStyle={{ border: '1px solid #F3F4F6', borderRadius: 8, fontSize: 12 }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Area type="monotone" dataKey="本金" stackId="1"
+                  stroke={PRIMARY} fill={PRIMARY} fillOpacity={0.15} strokeWidth={1.5} />
+                <Area type="monotone" dataKey="利息" stackId="1"
+                  stroke={SECONDARY} fill={SECONDARY} fillOpacity={0.2} strokeWidth={1.5} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
 
-          {/* Sensitivity table */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <h2 className="font-semibold text-gray-800 mb-3">利率敏感度分析</h2>
+          <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <p className="text-sm font-medium text-gray-700 mb-3">利率敏感度分析</p>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100">
                     {['年化利率','最終餘額','利息收益','本金倍數'].map(h => (
-                      <th key={h} className="text-left py-2 pr-4 text-gray-500 font-medium">{h}</th>
+                      <th key={h} className="text-left py-2 pr-4 text-xs text-gray-400 font-medium">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {sensitivityRows.map(row => (
                     <tr key={row.rate}
-                      className={`border-b border-gray-50 ${row.rate === rate ? 'bg-blue-50' : ''}`}>
-                      <td className="py-2 pr-4 font-medium">{row.rate}%</td>
-                      <td className="py-2 pr-4">{fmt(row.balance)}</td>
-                      <td className="py-2 pr-4 text-green-600">{fmt(row.interest)}</td>
-                      <td className="py-2 pr-4">{row.multiple.toFixed(2)}x</td>
+                      className={`border-b border-gray-50 ${row.rate === rate ? 'bg-gray-50' : ''}`}>
+                      <td className={`py-2 pr-4 font-medium ${row.rate === rate ? 'text-gray-900' : 'text-gray-600'}`}>
+                        {row.rate}%
+                      </td>
+                      <td className="py-2 pr-4 text-gray-700">{fmt(row.balance)}</td>
+                      <td className="py-2 pr-4 text-gray-500">{fmt(row.interest)}</td>
+                      <td className="py-2 pr-4 text-gray-500">{row.multiple.toFixed(2)}x</td>
                     </tr>
                   ))}
                 </tbody>

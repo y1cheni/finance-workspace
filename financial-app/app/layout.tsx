@@ -5,14 +5,14 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Financial Modeling Tool',
+  title: 'FinTool',
   description: '複利、退休規劃、財務報表視覺化工具',
   manifest: '/manifest.json',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'FinTool' },
 }
 
 export const viewport: Viewport = {
-  themeColor: '#1e40af',
+  themeColor: '#96B3D1',
   width: 'device-width',
   initialScale: 1,
 }
