@@ -6,9 +6,9 @@ import { createClient } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
 const NAV = [
-  { href: '/compound',   label: '💰 複利計算器' },
-  { href: '/retirement', label: '🎯 退休規劃'   },
-  { href: '/statements', label: '📋 財務報表'   },
+  { href: '/compound',   label: '複利計算器' },
+  { href: '/retirement', label: '退休規劃'   },
+  { href: '/statements', label: '財務報表'   },
 ]
 
 const ADMIN_EMAIL = 'yichenjasperliao@gmail.com'
@@ -27,7 +27,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     })
   }, [router])
 
-  // Log page visits
   useEffect(() => {
     if (!loading && user) {
       fetch('/api/log-usage', {
@@ -40,7 +39,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-200" style={{ borderTopColor: '#96B3D1' }} />
     </div>
   )
 
@@ -52,21 +51,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Top nav */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14">
+          <div className="flex items-center justify-between h-13 py-3">
             <div className="flex items-center gap-6">
-              <span className="font-bold text-blue-700 text-lg hidden sm:block">📊 FinTool</span>
-              <nav className="flex gap-1">
+              <span className="font-semibold text-gray-900 text-sm tracking-wide hidden sm:block">FinTool</span>
+              <nav className="flex gap-0.5">
                 {NAV.map(({ href, label }) => (
                   <Link
                     key={href}
                     href={href}
                     className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                       pathname === href
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'text-gray-600 hover:bg-gray-100'
+                        ? 'text-gray-900 bg-gray-100'
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                     }`}
                   >
                     {label}
@@ -77,11 +75,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     href="/admin"
                     className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                       pathname === '/admin'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'text-gray-600 hover:bg-gray-100'
+                        ? 'text-gray-900 bg-gray-100'
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                     }`}
                   >
-                    🛠️ 後台
+                    後台
                   </Link>
                 )}
               </nav>
@@ -91,15 +89,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <img
                   src={user.user_metadata.avatar_url}
                   alt="avatar"
-                  className="w-7 h-7 rounded-full"
+                  className="w-6 h-6 rounded-full"
                 />
               )}
-              <span className="text-xs text-gray-500 hidden sm:block">
+              <span className="text-xs text-gray-400 hidden sm:block">
                 {user?.user_metadata?.full_name ?? user?.email}
               </span>
               <button
                 onClick={handleSignOut}
-                className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
+                className="text-xs text-gray-300 hover:text-gray-600 transition-colors"
               >
                 登出
               </button>
@@ -108,7 +106,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </header>
 
-      {/* Page content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">
         {children}
       </main>

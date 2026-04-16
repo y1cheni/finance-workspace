@@ -1,8 +1,11 @@
 'use client'
 import { useState } from 'react'
-import { AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
          Legend, ReferenceLine, ResponsiveContainer } from 'recharts'
 import { compoundSeries, annuityPv, monthlySavingsNeeded, yearsToTarget } from '@/lib/math-engine'
+
+const PRIMARY   = '#96B3D1'
+const SECONDARY = '#94A3B8'
 
 function fmt(n: number) { return `NT$ ${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
 
@@ -13,12 +16,13 @@ function Slider({ label, value, min, max, step, format, onChange }: {
   return (
     <div className="mb-4">
       <div className="flex justify-between mb-1">
-        <label className="text-sm font-medium text-gray-700">{label}</label>
-        <span className="text-sm font-semibold text-blue-600">{format(value)}</span>
+        <label className="text-sm font-medium text-gray-600">{label}</label>
+        <span className="text-sm font-semibold text-gray-900">{format(value)}</span>
       </div>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(Number(e.target.value))}
-        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+        className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer"
+        style={{ accentColor: PRIMARY }} />
     </div>
   )
 }
@@ -48,7 +52,6 @@ export default function RetirementPage() {
 
   const neededMonthly = monthlySavingsNeeded(target, savings, r, months)
 
-  // Accumulation chart
   const accData = yearsToR > 0 ? (() => {
     const d = compoundSeries(savings, r, yearsToR, neededMonthly, 12)
     const step = Math.max(1, Math.floor(d.years.length / 80))
@@ -60,12 +63,10 @@ export default function RetirementPage() {
           age: (currentAge + d.years[idx]).toFixed(0),
           累計投入: Math.round(d.contributions[idx]),
           利息成長: Math.round(d.interest[idx]),
-          總資產: Math.round(d.balance[idx]),
         }
       })
   })() : []
 
-  // Drawdown chart
   const drawData: { age: string; 資產餘額: number }[] = []
   let bal = target
   const mr = r / 12
@@ -75,7 +76,6 @@ export default function RetirementPage() {
   }
   const remaining = drawData[drawData.length - 1]['資產餘額']
 
-  // Scenarios
   const scenarios = [5000, 10000, 20000, 30000, 50000, 80000, 100000].map(amt => {
     const d  = compoundSeries(savings, r, yearsToR, amt, 12)
     const fb = d.balance[d.balance.length - 1]
@@ -85,12 +85,11 @@ export default function RetirementPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">🎯 退休規劃反推</h1>
+      <h1 className="text-xl font-semibold text-gray-900 mb-6">退休規劃</h1>
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Controls */}
-        <aside className="lg:w-72 shrink-0">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-1">
-            <h2 className="font-semibold text-gray-800 mb-3">基本資料</h2>
+        <aside className="lg:w-68 shrink-0">
+          <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-1">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">基本資料</p>
             <Slider label="目前年齡"     value={currentAge}    min={20} max={65} step={1}
               format={v => `${v} 歲`} onChange={setCurrentAge} />
             <Slider label="預計退休年齡" value={retirementAge} min={currentAge + 1} max={80} step={1}
@@ -99,111 +98,121 @@ export default function RetirementPage() {
               format={v => `${v} 歲`} onChange={setLifeExp} />
 
             <hr className="my-3 border-gray-100" />
-            <h2 className="font-semibold text-gray-800 mb-3">財務設定</h2>
-            <Slider label="目前存款" value={savings}    min={0} max={10_000_000} step={50_000}
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">財務設定</p>
+            <Slider label="目前存款"     value={savings}      min={0}      max={10_000_000} step={50_000}
               format={fmt} onChange={setSavings} />
-            <Slider label="退休後月支出" value={monthlyExp} min={10_000} max={200_000} step={5_000}
+            <Slider label="退休後月支出" value={monthlyExp}   min={10_000} max={200_000}    step={5_000}
               format={fmt} onChange={setMonthlyExp} />
-            <Slider label="年化報酬率" value={annualReturn} min={1} max={15} step={0.1}
+            <Slider label="年化報酬率"   value={annualReturn} min={1}      max={15}          step={0.1}
               format={v => `${v.toFixed(1)}%`} onChange={setAnnualReturn} />
-            <Slider label="通膨率" value={inflation} min={0} max={6} step={0.1}
+            <Slider label="通膨率"       value={inflation}    min={0}      max={6}            step={0.1}
               format={v => `${v.toFixed(1)}%`} onChange={setInflation} />
 
             <hr className="my-3 border-gray-100" />
-            <h2 className="font-semibold text-gray-800 mb-2">提領方式</h2>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">提領方式</p>
             <div className="grid grid-cols-1 gap-1">
               {(['fixed', '4pct'] as const).map((v) => (
                 <button key={v} onClick={() => setMode(v)}
                   className={`py-2 rounded-lg text-sm font-medium transition-colors ${
-                    mode === v ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}>{v === 'fixed' ? '固定提領法' : '4% 法則'}</button>
+                    mode === v ? 'text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                  }`}
+                  style={mode === v ? { backgroundColor: PRIMARY } : {}}
+                >{v === 'fixed' ? '固定提領法' : '4% 法則'}</button>
               ))}
             </div>
           </div>
         </aside>
 
-        {/* Main */}
         <div className="flex-1 space-y-5">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: '退休目標金額', value: fmt(target),           color: 'text-blue-700'  },
-              { label: '每月需存入',   value: fmt(neededMonthly),    color: 'text-red-600'   },
-              { label: '距退休年數',   value: `${yearsToR} 年`,      color: 'text-gray-700'  },
-              { label: '退休後年數',   value: `${yearsInR} 年`,      color: 'text-purple-600'},
+              { label: '退休目標金額', value: fmt(target),        primary: true  },
+              { label: '每月需存入',   value: fmt(neededMonthly), primary: false },
+              { label: '距退休年數',   value: `${yearsToR} 年`,   primary: false },
+              { label: '退休後年數',   value: `${yearsInR} 年`,   primary: false },
             ].map(m => (
-              <div key={m.label} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-                <p className="text-xs text-gray-500">{m.label}</p>
-                <p className={`text-lg font-bold mt-1 ${m.color}`}>{m.value}</p>
+              <div key={m.label} className="bg-white rounded-xl border border-gray-100 p-4">
+                <p className="text-xs text-gray-400">{m.label}</p>
+                <p className="text-lg font-bold mt-1 text-gray-900"
+                   style={m.primary ? { color: PRIMARY } : {}}>{m.value}</p>
               </div>
             ))}
           </div>
 
-          {/* Accumulation */}
           {yearsToR > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-              <h2 className="font-semibold text-gray-800 mb-4">資產累積曲線</h2>
-              <ResponsiveContainer width="100%" height={300}>
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <p className="text-sm font-medium text-gray-700 mb-4">資產累積曲線</p>
+              <ResponsiveContainer width="100%" height={280}>
                 <AreaChart data={accData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
                   <XAxis dataKey="age" label={{ value: '歲', position: 'insideRight', offset: 10 }}
-                    tick={{ fontSize: 11 }} />
-                  <YAxis tickFormatter={v => `${(v/10000).toFixed(0)}萬`} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                  <Legend />
-                  <ReferenceLine y={target} stroke="#16a34a" strokeDasharray="6 3"
-                    label={{ value: '退休目標', position: 'right', fontSize: 11, fill: '#16a34a' }} />
-                  <Area type="monotone" dataKey="累計投入" stackId="1" stroke="#636EFA" fill="rgba(99,110,250,0.3)" />
-                  <Area type="monotone" dataKey="利息成長" stackId="1" stroke="#EF553B" fill="rgba(239,85,59,0.3)" />
+                    tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={v => `${(v/10000).toFixed(0)}萬`}
+                    tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(v: any) => fmt(Number(v))}
+                    contentStyle={{ border: '1px solid #F3F4F6', borderRadius: 8, fontSize: 12 }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <ReferenceLine y={target} stroke="#D1D5DB" strokeDasharray="6 3"
+                    label={{ value: '退休目標', position: 'right', fontSize: 11, fill: '#9CA3AF' }} />
+                  <Area type="monotone" dataKey="累計投入" stackId="1"
+                    stroke={PRIMARY} fill={PRIMARY} fillOpacity={0.15} strokeWidth={1.5} />
+                  <Area type="monotone" dataKey="利息成長" stackId="1"
+                    stroke={SECONDARY} fill={SECONDARY} fillOpacity={0.2} strokeWidth={1.5} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           )}
 
-          {/* Drawdown */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <h2 className="font-semibold text-gray-800 mb-4">退休提領模擬</h2>
-            <ResponsiveContainer width="100%" height={240}>
+          <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <p className="text-sm font-medium text-gray-700 mb-4">退休提領模擬</p>
+            <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={drawData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="age" tick={{ fontSize: 10 }}
-                  label={{ value: '歲', position: 'insideRight', offset: 10 }} />
-                <YAxis tickFormatter={v => `${(v/10000).toFixed(0)}萬`} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                <ReferenceLine y={0} stroke="#ef4444" strokeDasharray="4 2"
-                  label={{ value: '資產耗盡', fill: '#ef4444', fontSize: 11 }} />
-                <Area type="monotone" dataKey="資產餘額" stroke="#00CC96" fill="rgba(0,204,150,0.25)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                <XAxis dataKey="age" tick={{ fontSize: 10, fill: '#9CA3AF' }}
+                  label={{ value: '歲', position: 'insideRight', offset: 10 }}
+                  axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={v => `${(v/10000).toFixed(0)}萬`}
+                  tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                <Tooltip formatter={(v: any) => fmt(Number(v))}
+                  contentStyle={{ border: '1px solid #F3F4F6', borderRadius: 8, fontSize: 12 }} />
+                <ReferenceLine y={0} stroke="#E5E7EB" strokeDasharray="4 2"
+                  label={{ value: '資產耗盡', fill: '#9CA3AF', fontSize: 11 }} />
+                <Area type="monotone" dataKey="資產餘額"
+                  stroke={PRIMARY} fill={PRIMARY} fillOpacity={0.15} strokeWidth={1.5} />
               </AreaChart>
             </ResponsiveContainer>
             {remaining > 0
-              ? <p className="mt-2 text-sm text-green-600 font-medium">✅ {lifeExp} 歲時仍有 {fmt(remaining)} 剩餘</p>
-              : <p className="mt-2 text-sm text-red-500 font-medium">⚠️ 資產不足，建議增加月存款或調整目標</p>}
+              ? <p className="mt-2 text-sm text-gray-500">{lifeExp} 歲時仍有 {fmt(remaining)} 剩餘</p>
+              : <p className="mt-2 text-sm text-gray-500">依此條件資產將提前耗盡，建議增加月存款或調整目標</p>}
           </div>
 
-          {/* Scenarios */}
           {yearsToR > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-              <h2 className="font-semibold text-gray-800 mb-3">情境比較</h2>
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <p className="text-sm font-medium text-gray-700 mb-3">情境比較</p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      {['每月存入','退休時資產','vs 目標','達標年齡','足夠？'].map(h => (
-                        <th key={h} className="text-left py-2 pr-4 text-gray-500 font-medium">{h}</th>
+                      {['每月存入','退休時資產','vs 目標','達標年齡','足夠'].map(h => (
+                        <th key={h} className="text-left py-2 pr-4 text-xs text-gray-400 font-medium">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {scenarios.map(s => (
-                      <tr key={s.amt} className={`border-b border-gray-50 ${s.amt === Math.round(neededMonthly / 1000) * 1000 ? 'bg-blue-50' : ''}`}>
-                        <td className="py-2 pr-4 font-medium">{fmt(s.amt)}</td>
-                        <td className="py-2 pr-4">{fmt(s.balance)}</td>
-                        <td className={`py-2 pr-4 ${s.gap >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                          {s.gap >= 0 ? '▲ ' : '▼ '}{fmt(Math.abs(s.gap))}
+                      <tr key={s.amt} className={`border-b border-gray-50 ${s.amt === Math.round(neededMonthly / 1000) * 1000 ? 'bg-gray-50' : ''}`}>
+                        <td className="py-2 pr-4 font-medium text-gray-700">{fmt(s.amt)}</td>
+                        <td className="py-2 pr-4 text-gray-600">{fmt(s.balance)}</td>
+                        <td className="py-2 pr-4 text-gray-500">
+                          {s.gap >= 0 ? '+' : '-'}{fmt(Math.abs(s.gap))}
                         </td>
-                        <td className="py-2 pr-4">
-                          {s.targetAge === Infinity ? '無法達標' : `${s.targetAge.toFixed(1)} 歲`}
+                        <td className="py-2 pr-4 text-gray-500">
+                          {s.targetAge === Infinity ? '—' : `${s.targetAge.toFixed(1)} 歲`}
                         </td>
-                        <td className="py-2">{s.balance >= target ? '✅' : '❌'}</td>
+                        <td className="py-2">
+                          <span className={`inline-block w-2 h-2 rounded-full ${s.balance >= target ? '' : 'bg-gray-300'}`}
+                            style={s.balance >= target ? { backgroundColor: PRIMARY } : {}} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
