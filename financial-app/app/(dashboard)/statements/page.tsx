@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
          Legend, ResponsiveContainer } from 'recharts'
 import { generateStatements } from '@/lib/statement-engine'
+import ScenarioBar from '@/components/ScenarioBar'
+import { downloadCSV } from '@/lib/csv-export'
 
 const PRIMARY = '#96B3D1'
 const CHART_COLORS: Record<string, string> = {
@@ -63,6 +65,36 @@ export default function StatementsPage() {
   const [projYears,   setProjYears]   = useState(20)
   const [activeTab,   setActiveTab]   = useState<'bs' | 'pl'>('bs')
 
+  const currentParams = { cash, investments, realEstate, otherAssets, liabilities, income, expenses, invRet, reGrowth, incGrowth, expGrowth, paydown, projYears }
+
+  const handleLoad = (params: Record<string, unknown>) => {
+    if (typeof params.cash        === 'number') setCash(params.cash)
+    if (typeof params.investments === 'number') setInvestments(params.investments)
+    if (typeof params.realEstate  === 'number') setRealEstate(params.realEstate)
+    if (typeof params.otherAssets === 'number') setOtherAssets(params.otherAssets)
+    if (typeof params.liabilities === 'number') setLiabilities(params.liabilities)
+    if (typeof params.income      === 'number') setIncome(params.income)
+    if (typeof params.expenses    === 'number') setExpenses(params.expenses)
+    if (typeof params.invRet      === 'number') setInvRet(params.invRet)
+    if (typeof params.reGrowth    === 'number') setReGrowth(params.reGrowth)
+    if (typeof params.incGrowth   === 'number') setIncGrowth(params.incGrowth)
+    if (typeof params.expGrowth   === 'number') setExpGrowth(params.expGrowth)
+    if (typeof params.paydown     === 'number') setPaydown(params.paydown)
+    if (typeof params.projYears   === 'number') setProjYears(params.projYears)
+  }
+
+  const handleExport = () => {
+    if (activeTab === 'bs') {
+      const headers = ['年', '現金', '投資', '不動產', '總資產', '負債', '淨值', '負債比%']
+      const rows = records.map(r => [r.year, r.cash, r.investments, r.realEstate, r.totalAssets, r.liabilities, r.netWorth, r.debtToAssets])
+      downloadCSV('資產負債表.csv', headers, rows)
+    } else {
+      const headers = ['年', '薪資收入', '投資收益', '總收入', '總支出', '淨收入', '儲蓄率%']
+      const rows = records.map(r => [r.year, r.annualIncome, r.investmentIncome, r.totalIncome, r.annualExpenses, r.netIncome, r.savingsRate])
+      downloadCSV('損益表.csv', headers, rows)
+    }
+  }
+
   const records = generateStatements({
     cash, investments, realEstate, otherAssets, liabilities,
     monthlyIncome: income, monthlyExpenses: expenses,
@@ -88,6 +120,11 @@ export default function StatementsPage() {
   return (
     <div>
       <h1 className="text-xl font-semibold text-gray-900 mb-6">財務報表</h1>
+
+      <div className="mb-4">
+        <ScenarioBar page="statements" currentParams={currentParams} onLoad={handleLoad} onExport={handleExport} />
+      </div>
+
       <div className="flex flex-col lg:flex-row gap-6">
 
         <aside className="lg:w-68 shrink-0">

@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
          Legend, ReferenceLine, ResponsiveContainer } from 'recharts'
 import { compoundSeries, annuityPv, monthlySavingsNeeded, yearsToTarget } from '@/lib/math-engine'
+import ScenarioBar from '@/components/ScenarioBar'
+import { downloadCSV } from '@/lib/csv-export'
 
 const PRIMARY   = '#96B3D1'
 const SECONDARY = '#94A3B8'
@@ -36,6 +38,25 @@ export default function RetirementPage() {
   const [annualReturn,  setAnnualReturn]  = useState(7)
   const [inflation,     setInflation]     = useState(2)
   const [mode,          setMode]          = useState<'fixed' | '4pct'>('fixed')
+
+  const currentParams = { currentAge, retirementAge, lifeExp, savings, monthlyExp, annualReturn, inflation, mode }
+
+  const handleLoad = (params: Record<string, unknown>) => {
+    if (typeof params.currentAge    === 'number') setCurrentAge(params.currentAge)
+    if (typeof params.retirementAge === 'number') setRetirementAge(params.retirementAge)
+    if (typeof params.lifeExp       === 'number') setLifeExp(params.lifeExp)
+    if (typeof params.savings       === 'number') setSavings(params.savings)
+    if (typeof params.monthlyExp    === 'number') setMonthlyExp(params.monthlyExp)
+    if (typeof params.annualReturn  === 'number') setAnnualReturn(params.annualReturn)
+    if (typeof params.inflation     === 'number') setInflation(params.inflation)
+    if (params.mode === 'fixed' || params.mode === '4pct') setMode(params.mode)
+  }
+
+  const handleExport = () => {
+    const headers = ['年齡', '累計投入', '利息成長', '總資產']
+    const rows = accData.map(r => [r.age, r.累計投入, r.利息成長, r.累計投入 + r.利息成長])
+    downloadCSV('退休規劃.csv', headers, rows)
+  }
 
   const retAge   = Math.max(retirementAge, currentAge + 1)
   const yearsToR = retAge - currentAge
@@ -86,6 +107,11 @@ export default function RetirementPage() {
   return (
     <div>
       <h1 className="text-xl font-semibold text-gray-900 mb-6">退休規劃</h1>
+
+      <div className="mb-4">
+        <ScenarioBar page="retirement" currentParams={currentParams} onLoad={handleLoad} onExport={handleExport} />
+      </div>
+
       <div className="flex flex-col lg:flex-row gap-6">
         <aside className="lg:w-68 shrink-0">
           <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-1">
