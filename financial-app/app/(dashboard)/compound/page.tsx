@@ -4,11 +4,10 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { compoundSeries, cagr } from '@/lib/math-engine'
 import ScenarioBar from '@/components/ScenarioBar'
 import { downloadCSV } from '@/lib/csv-export'
+import { D } from '@/lib/design'
 
 const FREQ_MAP: Record<string, number> = { 每月: 12, 每季: 4, 每年: 1, 每日: 365 }
 const RATES = [2, 4, 6, 7, 8, 10, 12, 15]
-const PRIMARY = '#96B3D1'
-const SECONDARY = '#94A3B8'
 
 function fmt(n: number) { return `NT$ ${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
 
@@ -19,18 +18,13 @@ function Slider({ label, value, min, max, step, format, onChange }: {
   return (
     <div className="mb-5">
       <div className="flex justify-between mb-1">
-        <label className="text-sm font-medium text-gray-600">{label}</label>
-        <span className="text-sm font-semibold text-gray-900">{format(value)}</span>
+        <label className="text-xs" style={{ color: D.muted }}>{label}</label>
+        <span className="text-xs font-semibold" style={{ color: D.ink }}>{format(value)}</span>
       </div>
-      <input
-        type="range" min={min} max={max} step={step} value={value}
+      <input type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(Number(e.target.value))}
-        className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer"
-        style={{ accentColor: PRIMARY }}
-      />
-      <div className="flex justify-between text-xs text-gray-300 mt-0.5">
-        <span>{format(min)}</span><span>{format(max)}</span>
-      </div>
+        className="w-full h-1 rounded-full appearance-none cursor-pointer"
+        style={{ accentColor: D.accent }} />
     </div>
   )
 }
@@ -43,19 +37,12 @@ export default function CompoundPage() {
   const [freq, setFreq]       = useState('每月')
 
   const currentParams = { initial, monthly, rate, years, freq }
-
-  const handleLoad = (params: Record<string, unknown>) => {
-    if (typeof params.initial === 'number') setInitial(params.initial)
-    if (typeof params.monthly === 'number') setMonthly(params.monthly)
-    if (typeof params.rate    === 'number') setRate(params.rate)
-    if (typeof params.years   === 'number') setYears(params.years)
-    if (typeof params.freq    === 'string') setFreq(params.freq)
-  }
-
-  const handleExport = () => {
-    const headers = ['年', '本金', '利息', '總餘額']
-    const rows = chartData.map(r => [r.year, r.本金, r.利息, r.本金 + r.利息])
-    downloadCSV('複利計算.csv', headers, rows)
+  const handleLoad = (p: Record<string, unknown>) => {
+    if (typeof p.initial === 'number') setInitial(p.initial)
+    if (typeof p.monthly === 'number') setMonthly(p.monthly)
+    if (typeof p.rate    === 'number') setRate(p.rate)
+    if (typeof p.years   === 'number') setYears(p.years)
+    if (typeof p.freq    === 'string') setFreq(p.freq)
   }
 
   const compFreq   = FREQ_MAP[freq]
@@ -67,11 +54,7 @@ export default function CompoundPage() {
     .filter((_, i) => i % step === 0 || i === data.years.length - 1)
     .map((_, i) => {
       const idx = Math.min(i * step, data.years.length - 1)
-      return {
-        year: data.years[idx].toFixed(1),
-        本金: Math.round(data.contributions[idx]),
-        利息: Math.round(data.interest[idx]),
-      }
+      return { year: data.years[idx].toFixed(1), 本金: Math.round(data.contributions[idx]), 利息: Math.round(data.interest[idx]) }
     })
 
   const finalBalance  = data.balance[data.balance.length - 1]
@@ -79,117 +62,101 @@ export default function CompoundPage() {
   const totalInterest = data.interest[data.interest.length - 1]
   const effectiveCagr = cagr(initial, finalBalance, years)
 
+  const handleExport = () => {
+    downloadCSV('複利計算.csv', ['年', '本金', '利息', '總餘額'],
+      chartData.map(r => [r.year, r.本金, r.利息, r.本金 + r.利息]))
+  }
+
   const sensitivityRows = RATES.map(r => {
-    const d  = compoundSeries(initial, r / 100, years, monthly, compFreq)
+    const d = compoundSeries(initial, r / 100, years, monthly, compFreq)
     const fb = d.balance[d.balance.length - 1]
     const tc = d.contributions[d.contributions.length - 1]
     return { rate: r, balance: fb, interest: fb - tc, multiple: tc > 0 ? fb / tc : 0 }
   })
 
   return (
-    <div>
-      <h1 className="text-xl font-semibold text-gray-900 mb-6">複利計算器</h1>
+    <div style={{ fontFamily: D.font }}>
+      <h1 className="text-xl font-bold mb-6" style={{ color: D.ink }}>複利計算器</h1>
 
       <div className="mb-4">
         <ScenarioBar page="compound" currentParams={currentParams} onLoad={handleLoad} onExport={handleExport} />
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        <aside className="lg:w-68 shrink-0">
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">參數設定</p>
-
-            <Slider label="初始本金" value={initial} min={0} max={5_000_000} step={10_000}
-              format={fmt} onChange={setInitial} />
-            <Slider label="每月定投" value={monthly} min={0} max={200_000} step={1_000}
-              format={fmt} onChange={setMonthly} />
-            <Slider label="年化利率" value={rate} min={0} max={20} step={0.1}
-              format={v => `${v.toFixed(1)}%`} onChange={setRate} />
-            <Slider label="投資年限" value={years} min={1} max={50} step={1}
-              format={v => `${v} 年`} onChange={setYears} />
-
-            <div>
-              <p className="text-sm font-medium text-gray-600 mb-2">複利頻率</p>
-              <div className="grid grid-cols-2 gap-1">
-                {Object.keys(FREQ_MAP).map(f => (
-                  <button key={f} onClick={() => setFreq(f)}
-                    className={`py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      freq === f ? 'text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
-                    }`}
-                    style={freq === f ? { backgroundColor: PRIMARY } : {}}
-                  >{f}</button>
-                ))}
-              </div>
+        <aside className="lg:w-60 shrink-0">
+          <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+            <p className="text-xs mb-4" style={{ color: D.muted }}>參數設定</p>
+            <Slider label="初始本金" value={initial} min={0} max={5_000_000} step={10_000} format={fmt} onChange={setInitial} />
+            <Slider label="每月定投" value={monthly} min={0} max={200_000} step={1_000} format={fmt} onChange={setMonthly} />
+            <Slider label="年化利率" value={rate} min={0} max={20} step={0.1} format={v => `${v.toFixed(1)}%`} onChange={setRate} />
+            <Slider label="投資年限" value={years} min={1} max={50} step={1} format={v => `${v} 年`} onChange={setYears} />
+            <p className="text-xs mb-2" style={{ color: D.muted }}>複利頻率</p>
+            <div className="grid grid-cols-2 gap-1">
+              {Object.keys(FREQ_MAP).map(f => (
+                <button key={f} onClick={() => setFreq(f)}
+                  className="py-1.5 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
+                  style={{ backgroundColor: freq === f ? D.ink : D.bg, color: freq === f ? D.bg : D.muted }}>
+                  {f}
+                </button>
+              ))}
             </div>
           </div>
         </aside>
 
-        <div className="flex-1 space-y-5">
+        <div className="flex-1 space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: '最終餘額',   value: fmt(finalBalance),                        primary: true  },
-              { label: '總投入本金', value: fmt(totalContrib),                        primary: false },
-              { label: '累計利息',   value: fmt(totalInterest),                       primary: false },
-              { label: '實際 CAGR',  value: `${(effectiveCagr * 100).toFixed(2)}%`,  primary: false },
+              { label: '最終餘額',   value: fmt(finalBalance),                       accent: true  },
+              { label: '總投入本金', value: fmt(totalContrib),                       accent: false },
+              { label: '累計利息',   value: fmt(totalInterest),                      accent: false },
+              { label: '實際 CAGR',  value: `${(effectiveCagr * 100).toFixed(2)}%`, accent: false },
             ].map(m => (
-              <div key={m.label} className="bg-white rounded-xl border border-gray-100 p-4">
-                <p className="text-xs text-gray-400">{m.label}</p>
-                <p className={`text-lg font-bold mt-1 ${m.primary ? '' : 'text-gray-900'}`}
-                   style={m.primary ? { color: PRIMARY } : {}}>
-                  {m.value}
-                </p>
+              <div key={m.label} className="rounded-2xl p-4" style={{ backgroundColor: D.surface }}>
+                <p className="text-xs mb-1" style={{ color: D.muted }}>{m.label}</p>
+                <p className="text-base font-bold" style={{ color: m.accent ? D.accent : D.ink }}>{m.value}</p>
               </div>
             ))}
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
-            <p className="text-sm font-medium text-gray-700 mb-4">
-              複利成長曲線 — {freq}複利，年利率 {rate.toFixed(1)}%
-            </p>
-            <ResponsiveContainer width="100%" height={320}>
+          <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+            <p className="text-xs mb-4" style={{ color: D.muted }}>複利成長曲線 — {freq}複利，年利率 {rate.toFixed(1)}%</p>
+            <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
                 <XAxis dataKey="year" label={{ value: '年', position: 'insideRight', offset: 10 }}
-                  tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                  tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
                 <YAxis tickFormatter={v => `${(v/10000).toFixed(0)}萬`}
-                  tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                  tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
                 <Tooltip formatter={(v: any) => fmt(Number(v))}
-                  contentStyle={{ border: '1px solid #F3F4F6', borderRadius: 8, fontSize: 12 }} />
+                  contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Area type="monotone" dataKey="本金" stackId="1"
-                  stroke={PRIMARY} fill={PRIMARY} fillOpacity={0.15} strokeWidth={1.5} />
-                <Area type="monotone" dataKey="利息" stackId="1"
-                  stroke={SECONDARY} fill={SECONDARY} fillOpacity={0.2} strokeWidth={1.5} />
+                <Area type="monotone" dataKey="本金" stackId="1" stroke="var(--ink)" fill="var(--ink)" fillOpacity={0.08} strokeWidth={1.5} />
+                <Area type="monotone" dataKey="利息" stackId="1" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.15} strokeWidth={1.5} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
-            <p className="text-sm font-medium text-gray-700 mb-3">利率敏感度分析</p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    {['年化利率','最終餘額','利息收益','本金倍數'].map(h => (
-                      <th key={h} className="text-left py-2 pr-4 text-xs text-gray-400 font-medium">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sensitivityRows.map(row => (
-                    <tr key={row.rate}
-                      className={`border-b border-gray-50 ${row.rate === rate ? 'bg-gray-50' : ''}`}>
-                      <td className={`py-2 pr-4 font-medium ${row.rate === rate ? 'text-gray-900' : 'text-gray-600'}`}>
-                        {row.rate}%
-                      </td>
-                      <td className="py-2 pr-4 text-gray-700">{fmt(row.balance)}</td>
-                      <td className="py-2 pr-4 text-gray-500">{fmt(row.interest)}</td>
-                      <td className="py-2 pr-4 text-gray-500">{row.multiple.toFixed(2)}x</td>
-                    </tr>
+          <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+            <p className="text-xs mb-3" style={{ color: D.muted }}>利率敏感度分析</p>
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ borderBottom: `1px solid var(--subtle)` }}>
+                  {['年化利率','最終餘額','利息收益','本金倍數'].map(h => (
+                    <th key={h} className="text-left py-2 pr-4 text-xs font-medium" style={{ color: D.muted }}>{h}</th>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </tr>
+              </thead>
+              <tbody>
+                {sensitivityRows.map(row => (
+                  <tr key={row.rate} style={{ borderBottom: `1px solid var(--subtle)`, opacity: row.rate === rate ? 1 : 0.6 }}>
+                    <td className="py-2 pr-4 font-semibold" style={{ color: row.rate === rate ? D.accent : D.ink }}>{row.rate}%</td>
+                    <td className="py-2 pr-4" style={{ color: D.ink }}>{fmt(row.balance)}</td>
+                    <td className="py-2 pr-4" style={{ color: D.muted }}>{fmt(row.interest)}</td>
+                    <td className="py-2" style={{ color: D.muted }}>{row.multiple.toFixed(2)}x</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

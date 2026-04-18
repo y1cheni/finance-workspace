@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { LanguageProvider } from '@/components/LanguageProvider'
+import { ThemeProvider } from '@/components/ThemeProvider'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const mono  = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' })
@@ -23,7 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-TW" className="h-full">
       <body className={`${inter.variable} ${mono.variable} ${inter.className} min-h-full bg-gray-50`}>
-        <LanguageProvider>{children}</LanguageProvider>
+        <ThemeProvider><LanguageProvider>{children}</LanguageProvider></ThemeProvider>
       </body>
     </html>
   )

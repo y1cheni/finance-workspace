@@ -5,9 +5,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
 import { compoundSeries, annuityPv, monthlySavingsNeeded, yearsToTarget } from '@/lib/math-engine'
 import ScenarioBar from '@/components/ScenarioBar'
 import { downloadCSV } from '@/lib/csv-export'
-
-const PRIMARY   = '#96B3D1'
-const SECONDARY = '#94A3B8'
+import { D } from '@/lib/design'
 
 function fmt(n: number) { return `NT$ ${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
 
@@ -18,13 +16,13 @@ function Slider({ label, value, min, max, step, format, onChange }: {
   return (
     <div className="mb-4">
       <div className="flex justify-between mb-1">
-        <label className="text-sm font-medium text-gray-600">{label}</label>
-        <span className="text-sm font-semibold text-gray-900">{format(value)}</span>
+        <label className="text-xs" style={{ color: D.muted }}>{label}</label>
+        <span className="text-xs font-semibold" style={{ color: D.ink }}>{format(value)}</span>
       </div>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(Number(e.target.value))}
-        className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer"
-        style={{ accentColor: PRIMARY }} />
+        className="w-full h-1 rounded-full appearance-none cursor-pointer"
+        style={{ accentColor: D.accent }} />
     </div>
   )
 }
@@ -105,17 +103,17 @@ export default function RetirementPage() {
   })
 
   return (
-    <div>
-      <h1 className="text-xl font-semibold text-gray-900 mb-6">退休規劃</h1>
+    <div style={{ fontFamily: D.font }}>
+      <h1 className="text-xl font-bold mb-6" style={{ color: D.ink }}>退休規劃</h1>
 
       <div className="mb-4">
         <ScenarioBar page="retirement" currentParams={currentParams} onLoad={handleLoad} onExport={handleExport} />
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        <aside className="lg:w-68 shrink-0">
-          <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-1">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">基本資料</p>
+        <aside className="lg:w-60 shrink-0">
+          <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+            <p className="text-xs mb-4" style={{ color: D.muted }}>基本資料</p>
             <Slider label="目前年齡"     value={currentAge}    min={20} max={65} step={1}
               format={v => `${v} 歲`} onChange={setCurrentAge} />
             <Slider label="預計退休年齡" value={retirementAge} min={currentAge + 1} max={80} step={1}
@@ -123,8 +121,8 @@ export default function RetirementPage() {
             <Slider label="預期壽命"     value={lifeExp}       min={retAge + 1} max={100} step={1}
               format={v => `${v} 歲`} onChange={setLifeExp} />
 
-            <hr className="my-3 border-gray-100" />
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">財務設定</p>
+            <div className="my-4" style={{ borderTop: `1px solid var(--subtle)` }} />
+            <p className="text-xs mb-4" style={{ color: D.muted }}>財務設定</p>
             <Slider label="目前存款"     value={savings}      min={0}      max={10_000_000} step={50_000}
               format={fmt} onChange={setSavings} />
             <Slider label="退休後月支出" value={monthlyExp}   min={10_000} max={200_000}    step={5_000}
@@ -134,110 +132,109 @@ export default function RetirementPage() {
             <Slider label="通膨率"       value={inflation}    min={0}      max={6}            step={0.1}
               format={v => `${v.toFixed(1)}%`} onChange={setInflation} />
 
-            <hr className="my-3 border-gray-100" />
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">提領方式</p>
+            <div className="my-4" style={{ borderTop: `1px solid var(--subtle)` }} />
+            <p className="text-xs mb-2" style={{ color: D.muted }}>提領方式</p>
             <div className="grid grid-cols-1 gap-1">
               {(['fixed', '4pct'] as const).map((v) => (
                 <button key={v} onClick={() => setMode(v)}
-                  className={`py-2 rounded-lg text-sm font-medium transition-colors ${
-                    mode === v ? 'text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
-                  }`}
-                  style={mode === v ? { backgroundColor: PRIMARY } : {}}
+                  className="py-1.5 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
+                  style={{ backgroundColor: mode === v ? D.ink : D.bg, color: mode === v ? D.bg : D.muted }}
                 >{v === 'fixed' ? '固定提領法' : '4% 法則'}</button>
               ))}
             </div>
           </div>
         </aside>
 
-        <div className="flex-1 space-y-5">
+        <div className="flex-1 space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: '退休目標金額', value: fmt(target),        primary: true  },
-              { label: '每月需存入',   value: fmt(neededMonthly), primary: false },
-              { label: '距退休年數',   value: `${yearsToR} 年`,   primary: false },
-              { label: '退休後年數',   value: `${yearsInR} 年`,   primary: false },
+              { label: '退休目標金額', value: fmt(target),        accent: true  },
+              { label: '每月需存入',   value: fmt(neededMonthly), accent: false },
+              { label: '距退休年數',   value: `${yearsToR} 年`,   accent: false },
+              { label: '退休後年數',   value: `${yearsInR} 年`,   accent: false },
             ].map(m => (
-              <div key={m.label} className="bg-white rounded-xl border border-gray-100 p-4">
-                <p className="text-xs text-gray-400">{m.label}</p>
-                <p className="text-lg font-bold mt-1 text-gray-900"
-                   style={m.primary ? { color: PRIMARY } : {}}>{m.value}</p>
+              <div key={m.label} className="rounded-2xl p-4" style={{ backgroundColor: D.surface }}>
+                <p className="text-xs mb-1" style={{ color: D.muted }}>{m.label}</p>
+                <p className="text-base font-bold" style={{ color: m.accent ? D.accent : D.ink }}>{m.value}</p>
               </div>
             ))}
           </div>
 
           {yearsToR > 0 && (
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
-              <p className="text-sm font-medium text-gray-700 mb-4">資產累積曲線</p>
+            <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+              <p className="text-xs mb-4" style={{ color: D.muted }}>資產累積曲線</p>
               <ResponsiveContainer width="100%" height={280}>
                 <AreaChart data={accData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
                   <XAxis dataKey="age" label={{ value: '歲', position: 'insideRight', offset: 10 }}
-                    tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                    tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={v => `${(v/10000).toFixed(0)}萬`}
-                    tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                    tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
                   <Tooltip formatter={(v: any) => fmt(Number(v))}
-                    contentStyle={{ border: '1px solid #F3F4F6', borderRadius: 8, fontSize: 12 }} />
+                    contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <ReferenceLine y={target} stroke="#D1D5DB" strokeDasharray="6 3"
-                    label={{ value: '退休目標', position: 'right', fontSize: 11, fill: '#9CA3AF' }} />
+                  <ReferenceLine y={target} stroke="var(--muted)" strokeDasharray="6 3"
+                    label={{ value: '退休目標', position: 'right', fontSize: 10, fill: 'var(--muted)' }} />
                   <Area type="monotone" dataKey="累計投入" stackId="1"
-                    stroke={PRIMARY} fill={PRIMARY} fillOpacity={0.15} strokeWidth={1.5} />
+                    stroke="var(--ink)" fill="var(--ink)" fillOpacity={0.08} strokeWidth={1.5} />
                   <Area type="monotone" dataKey="利息成長" stackId="1"
-                    stroke={SECONDARY} fill={SECONDARY} fillOpacity={0.2} strokeWidth={1.5} />
+                    stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.15} strokeWidth={1.5} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           )}
 
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
-            <p className="text-sm font-medium text-gray-700 mb-4">退休提領模擬</p>
+          <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+            <p className="text-xs mb-4" style={{ color: D.muted }}>退休提領模擬</p>
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={drawData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-                <XAxis dataKey="age" tick={{ fontSize: 10, fill: '#9CA3AF' }}
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
+                <XAxis dataKey="age" tick={{ fontSize: 10, fill: 'var(--muted)' }}
                   label={{ value: '歲', position: 'insideRight', offset: 10 }}
                   axisLine={false} tickLine={false} />
                 <YAxis tickFormatter={v => `${(v/10000).toFixed(0)}萬`}
-                  tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                  tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
                 <Tooltip formatter={(v: any) => fmt(Number(v))}
-                  contentStyle={{ border: '1px solid #F3F4F6', borderRadius: 8, fontSize: 12 }} />
-                <ReferenceLine y={0} stroke="#E5E7EB" strokeDasharray="4 2"
-                  label={{ value: '資產耗盡', fill: '#9CA3AF', fontSize: 11 }} />
+                  contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
+                <ReferenceLine y={0} stroke="var(--subtle)"
+                  label={{ value: '資產耗盡', fill: 'var(--muted)', fontSize: 10 }} />
                 <Area type="monotone" dataKey="資產餘額"
-                  stroke={PRIMARY} fill={PRIMARY} fillOpacity={0.15} strokeWidth={1.5} />
+                  stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.15} strokeWidth={1.5} />
               </AreaChart>
             </ResponsiveContainer>
-            {remaining > 0
-              ? <p className="mt-2 text-sm text-gray-500">{lifeExp} 歲時仍有 {fmt(remaining)} 剩餘</p>
-              : <p className="mt-2 text-sm text-gray-500">依此條件資產將提前耗盡，建議增加月存款或調整目標</p>}
+            <p className="mt-2 text-xs" style={{ color: D.muted }}>
+              {remaining > 0
+                ? `${lifeExp} 歲時仍有 ${fmt(remaining)} 剩餘`
+                : '依此條件資產將提前耗盡，建議增加月存款或調整目標'}
+            </p>
           </div>
 
           {yearsToR > 0 && (
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
-              <p className="text-sm font-medium text-gray-700 mb-3">情境比較</p>
+            <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+              <p className="text-xs mb-3" style={{ color: D.muted }}>情境比較</p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-100">
+                    <tr style={{ borderBottom: `1px solid var(--subtle)` }}>
                       {['每月存入','退休時資產','vs 目標','達標年齡','足夠'].map(h => (
-                        <th key={h} className="text-left py-2 pr-4 text-xs text-gray-400 font-medium">{h}</th>
+                        <th key={h} className="text-left py-2 pr-4 text-xs font-medium" style={{ color: D.muted }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {scenarios.map(s => (
-                      <tr key={s.amt} className={`border-b border-gray-50 ${s.amt === Math.round(neededMonthly / 1000) * 1000 ? 'bg-gray-50' : ''}`}>
-                        <td className="py-2 pr-4 font-medium text-gray-700">{fmt(s.amt)}</td>
-                        <td className="py-2 pr-4 text-gray-600">{fmt(s.balance)}</td>
-                        <td className="py-2 pr-4 text-gray-500">
+                      <tr key={s.amt} style={{ borderBottom: `1px solid var(--subtle)` }}>
+                        <td className="py-2 pr-4 font-medium" style={{ color: D.ink }}>{fmt(s.amt)}</td>
+                        <td className="py-2 pr-4" style={{ color: D.ink }}>{fmt(s.balance)}</td>
+                        <td className="py-2 pr-4" style={{ color: D.muted }}>
                           {s.gap >= 0 ? '+' : '-'}{fmt(Math.abs(s.gap))}
                         </td>
-                        <td className="py-2 pr-4 text-gray-500">
+                        <td className="py-2 pr-4" style={{ color: D.muted }}>
                           {s.targetAge === Infinity ? '—' : `${s.targetAge.toFixed(1)} 歲`}
                         </td>
                         <td className="py-2">
-                          <span className={`inline-block w-2 h-2 rounded-full ${s.balance >= target ? '' : 'bg-gray-300'}`}
-                            style={s.balance >= target ? { backgroundColor: PRIMARY } : {}} />
+                          <span className="inline-block w-2 h-2 rounded-sm"
+                            style={{ backgroundColor: s.balance >= target ? D.accent : D.subtle }} />
                         </td>
                       </tr>
                     ))}
