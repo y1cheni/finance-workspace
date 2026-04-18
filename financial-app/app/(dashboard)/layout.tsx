@@ -31,7 +31,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) router.replace('/login')
+      if (!data.user) router.replace('/')
       else { setUser(data.user); setLoading(false) }
     })
   }, [router])
@@ -55,7 +55,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const handleSignOut = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
-    router.replace('/login')
+    router.replace('/')
   }
 
   return (
