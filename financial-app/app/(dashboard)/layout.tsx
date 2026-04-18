@@ -18,9 +18,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const T = t[lang]
 
   const NAV = [
-    { href: '/compound',   label: T.nav.compound   },
-    { href: '/retirement', label: T.nav.retirement },
-    { href: '/statements', label: T.nav.statements  },
+    { href: '/compound',      label: T.nav.compound      },
+    { href: '/retirement',    label: T.nav.retirement    },
+    { href: '/statements',    label: T.nav.statements    },
+    { href: '/subscriptions', label: T.nav.subscriptions },
+    { href: '/debts',         label: T.nav.debts         },
+    { href: '/budget',        label: T.nav.budget        },
+    { href: '/tax',           label: T.nav.tax           },
+    { href: '/cashflow',      label: T.nav.cashflow      },
   ]
 
   useEffect(() => {
