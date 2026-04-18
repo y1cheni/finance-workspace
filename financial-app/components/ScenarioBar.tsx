@@ -3,8 +3,7 @@ import { useEffect, useState } from 'react'
 import { listScenarios, saveScenario, deleteScenario, type Scenario } from '@/lib/scenarios'
 import { useLang } from '@/components/LanguageProvider'
 import { t } from '@/lib/i18n'
-
-const PRIMARY = '#96B3D1'
+import { D } from '@/lib/design'
 
 interface ScenarioBarProps {
   page: string
@@ -41,7 +40,7 @@ export default function ScenarioBar({ page, currentParams, onLoad, onExport }: S
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-wrap items-center gap-3">
+    <div className="rounded-2xl p-4 flex flex-wrap items-center gap-3" style={{ backgroundColor: D.surface }}>
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <input
           type="text"
@@ -49,14 +48,14 @@ export default function ScenarioBar({ page, currentParams, onLoad, onExport }: S
           value={name}
           onChange={e => setName(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSave()}
-          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-1 w-36"
-          style={{ '--tw-ring-color': PRIMARY } as React.CSSProperties}
+          className="rounded-xl px-3 py-1.5 text-xs w-36 focus:outline-none"
+          style={{ backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }}
         />
         <button
           onClick={handleSave}
           disabled={saving || !name.trim()}
-          className="px-3 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-40 transition-opacity"
-          style={{ backgroundColor: PRIMARY }}
+          className="px-3 py-1.5 rounded-xl text-xs font-medium disabled:opacity-40 transition-opacity hover:opacity-70"
+          style={{ backgroundColor: D.ink, color: D.bg }}
         >
           {saving ? S.saving : S.save}
         </button>
@@ -66,23 +65,27 @@ export default function ScenarioBar({ page, currentParams, onLoad, onExport }: S
         <div className="relative">
           <button
             onClick={() => setOpen(o => !o)}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors"
+            className="px-3 py-1.5 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
+            style={{ backgroundColor: D.bg, color: D.muted }}
           >
             {S.load} ({scenarios.length})
           </button>
           {open && (
-            <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-gray-100 rounded-xl shadow-lg min-w-48 py-1">
+            <div className="absolute right-0 top-full mt-1 z-20 rounded-2xl min-w-48 py-1"
+              style={{ backgroundColor: D.surface, border: `1px solid var(--subtle)` }}>
               {scenarios.map(s => (
-                <div key={s.id} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 group">
+                <div key={s.id} className="flex items-center justify-between px-3 py-2 group transition-opacity hover:opacity-70">
                   <button
-                    className="text-sm text-gray-700 text-left flex-1 truncate"
+                    className="text-xs text-left flex-1 truncate"
+                    style={{ color: D.ink }}
                     onClick={() => { onLoad(s.params); setOpen(false) }}
                   >
                     {s.name}
                   </button>
                   <button
                     onClick={() => handleDelete(s.id)}
-                    className="text-gray-300 hover:text-red-400 ml-3 text-xs transition-colors opacity-0 group-hover:opacity-100"
+                    className="ml-3 text-xs transition-opacity opacity-0 group-hover:opacity-100"
+                    style={{ color: D.muted }}
                   >
                     {S.delete}
                   </button>
@@ -95,7 +98,8 @@ export default function ScenarioBar({ page, currentParams, onLoad, onExport }: S
 
       <button
         onClick={onExport}
-        className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors"
+        className="px-3 py-1.5 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
+        style={{ backgroundColor: D.bg, color: D.muted }}
       >
         {S.export}
       </button>
