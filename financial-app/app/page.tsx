@@ -5,10 +5,16 @@ import { createClient } from '@/lib/supabase'
 import { useLang } from '@/components/LanguageProvider'
 import { t } from '@/lib/i18n'
 
-const PRIMARY = '#96B3D1'
+// ── Design tokens ──────────────────────────────────────────────
+const BG      = '#F5F4EC'
+const INK     = '#1A1A1A'
+const ACCENT  = '#E8A020'
+const MUTED   = '#AAAAAA'
+const SURFACE = '#ECEAE0'   // slightly darker than BG for cards
 
+// ── Helpers ────────────────────────────────────────────────────
 const GOOGLE_SVG = (
-  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+  <svg width="16" height="16" viewBox="0 0 24 24" className="shrink-0">
     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
     <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
     <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
@@ -16,41 +22,59 @@ const GOOGLE_SVG = (
   </svg>
 )
 
-const CHARTS = [
-  <div key="compound" className="relative h-28 flex items-end gap-1 px-1">
-    {[30, 45, 55, 62, 72, 80, 88, 95].map((h, i) => (
-      <div key={i} className="flex-1 rounded-t" style={{ height: `${h}%`, backgroundColor: PRIMARY, opacity: 0.3 + i * 0.1 }} />
-    ))}
-  </div>,
-  <div key="retirement" className="relative h-28 overflow-hidden">
-    <svg viewBox="0 0 200 80" className="w-full h-full" preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={PRIMARY} stopOpacity="0.3" />
-          <stop offset="100%" stopColor={PRIMARY} stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-      <path d="M0 80 Q50 60 100 30 Q150 5 200 2 L200 80 Z" fill="url(#g1)" />
-      <path d="M0 80 Q50 60 100 30 Q150 5 200 2" fill="none" stroke={PRIMARY} strokeWidth="2" />
-    </svg>
-  </div>,
-  <div key="statements" className="relative h-28 flex items-end gap-0.5 px-1">
-    {[{ a: 60, b: 30 }, { a: 65, b: 28 }, { a: 70, b: 26 }, { a: 78, b: 22 }, { a: 85, b: 18 }, { a: 90, b: 15 }, { a: 95, b: 10 }].map((d, i) => (
-      <div key={i} className="flex-1 flex flex-col-reverse gap-0.5">
-        <div className="rounded-t" style={{ height: `${d.a}%`, backgroundColor: PRIMARY, opacity: 0.65 }} />
-        <div className="rounded-t" style={{ height: `${d.b}%`, backgroundColor: '#374151', opacity: 0.12 }} />
-      </div>
-    ))}
-  </div>,
-  <div key="formula" className="h-28 flex items-center justify-center">
-    <div className="font-mono text-xs text-gray-300 space-y-1.5">
-      <div><span style={{ color: PRIMARY }}>x</span> = P × (1 + r)^n</div>
-      <div><span style={{ color: PRIMARY }}>IRR</span> = f(cashflow, n)</div>
-      <div><span style={{ color: PRIMARY }}>ROI</span> = (gain − cost) / cost</div>
+// ── Micro chart components ─────────────────────────────────────
+function BarMini() {
+  const vals = [18, 26, 33, 41, 50, 59, 69, 80, 88, 95]
+  return (
+    <div className="flex items-end gap-1 h-16">
+      {vals.map((h, i) => (
+        <div key={i} className="flex-1 rounded-sm" style={{
+          height: `${h}%`,
+          backgroundColor: i === vals.length - 1 ? ACCENT : INK,
+          opacity: 0.12 + i * 0.08,
+        }} />
+      ))}
     </div>
-  </div>,
-]
+  )
+}
 
+function CurveMini() {
+  return (
+    <div className="h-16">
+      <svg viewBox="0 0 120 40" className="w-full h-full" preserveAspectRatio="none">
+        <path d="M0 38 C30 30 60 18 90 8 S110 2 120 1" fill="none" stroke={INK} strokeWidth="1.5" opacity="0.25" />
+        <path d="M0 40 C30 32 60 20 90 10 S110 4 120 3 L120 40 Z" fill={INK} opacity="0.07" />
+      </svg>
+    </div>
+  )
+}
+
+function StackedMini() {
+  return (
+    <div className="flex items-end gap-0.5 h-16">
+      {[55, 60, 65, 72, 78, 84, 90].map((a, i) => (
+        <div key={i} className="flex-1 flex flex-col-reverse gap-0.5">
+          <div className="rounded-sm" style={{ height: `${a}%`, backgroundColor: INK, opacity: 0.15 + i * 0.02 }} />
+          <div className="rounded-sm" style={{ height: `${100 - a - 10}%`, backgroundColor: ACCENT, opacity: 0.25 + i * 0.03 }} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function FormulaMini() {
+  return (
+    <div className="h-16 flex flex-col justify-center gap-1.5" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+      <div style={{ color: MUTED }}><span style={{ color: ACCENT }}>x</span> = P × (1+r)^n</div>
+      <div style={{ color: MUTED }}><span style={{ color: ACCENT }}>IRR</span> = f(cf, n)</div>
+      <div style={{ color: MUTED }}><span style={{ color: ACCENT }}>ROI</span> = Δ / cost</div>
+    </div>
+  )
+}
+
+const CHARTS = [<BarMini key="b"/>, <CurveMini key="c"/>, <StackedMini key="s"/>, <FormulaMini key="f"/>]
+
+// ── Page ───────────────────────────────────────────────────────
 export default function LandingPage() {
   const router = useRouter()
   const { lang, setLang } = useLang()
@@ -71,35 +95,33 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#FAFAF8' }}>
+    <div className="min-h-screen" style={{ backgroundColor: BG, color: INK, fontFamily: 'var(--font-mono)' }}>
 
-      {/* Nav */}
-      <header className="sticky top-0 z-10 border-b border-gray-100 bg-white/80 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md" style={{ backgroundColor: PRIMARY }} />
-            <span className="font-semibold text-gray-900 text-sm">{T.brand}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Language toggle */}
+      {/* ── Nav ── */}
+      <header className="sticky top-0 z-10" style={{ backgroundColor: BG }}>
+        <div className="max-w-5xl mx-auto px-8 h-14 flex items-center justify-between">
+          <span className="text-sm font-medium tracking-wide" style={{ fontFamily: 'var(--font-mono)' }}>
+            FinTool
+          </span>
+          <div className="flex items-center gap-4">
             <button
               onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
-              className="text-xs font-medium px-2.5 py-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              className="text-xs transition-opacity hover:opacity-50"
+              style={{ color: MUTED }}
             >
               {lang === 'zh' ? 'EN' : '中文'}
             </button>
-            {/* Get started */}
             <button
               onClick={handleLogin}
-              className="text-sm font-medium text-white px-4 py-1.5 rounded-lg transition-colors"
-              style={{ backgroundColor: PRIMARY }}
+              className="text-xs px-4 py-2 rounded-lg transition-opacity hover:opacity-70"
+              style={{ backgroundColor: INK, color: BG }}
             >
               {T.nav.getStarted}
             </button>
-            {/* Sign in */}
             <button
               onClick={handleLogin}
-              className="text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors px-2"
+              className="text-xs transition-opacity hover:opacity-50"
+              style={{ color: MUTED }}
             >
               {T.nav.signIn}
             </button>
@@ -107,115 +129,122 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="max-w-6xl mx-auto px-6 pt-20 pb-16 flex flex-col lg:flex-row items-center gap-16">
-        <div className="flex-1 max-w-lg">
-          <p className="text-xs font-medium tracking-widest uppercase mb-4" style={{ color: PRIMARY }}>
+      {/* ── Hero ── */}
+      <section className="max-w-5xl mx-auto px-8 pt-24 pb-20 flex flex-col lg:flex-row items-start gap-20">
+
+        {/* Left: text only */}
+        <div className="flex-1">
+          <p className="text-xs mb-8 tracking-widest uppercase" style={{ color: MUTED }}>
             {T.landing.badge}
           </p>
-          <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 leading-tight mb-6 whitespace-pre-line">
+          <h1 className="text-5xl sm:text-6xl font-bold leading-tight mb-10 whitespace-pre-line" style={{ letterSpacing: '-0.02em' }}>
             {T.landing.headline}
           </h1>
-          <p className="text-gray-400 text-base leading-relaxed mb-10 whitespace-pre-line">
+          <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: MUTED }}>
             {T.landing.sub}
           </p>
-          <button
-            onClick={handleLogin}
-            className="inline-flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-6 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
-          >
-            {GOOGLE_SVG}
-            {T.landing.cta}
-          </button>
-          <p className="text-xs text-gray-300 mt-4">{T.landing.ctaNote}</p>
         </div>
 
-        {/* Product mockup */}
-        <div className="flex-1 w-full max-w-xl">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="border-b border-gray-100 px-4 py-3 flex items-center gap-4">
-              <div className="w-5 h-5 rounded" style={{ backgroundColor: PRIMARY, opacity: 0.7 }} />
-              {[T.nav.compound, T.nav.retirement, T.nav.statements].map(label => (
-                <span key={label} className="text-xs text-gray-400">{label}</span>
+        {/* Right: product mockup */}
+        <div className="flex-1 w-full max-w-md pt-2">
+          <div className="rounded-2xl p-6" style={{ backgroundColor: SURFACE }}>
+            {/* fake nav */}
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-5 h-5 rounded-md" style={{ backgroundColor: INK, opacity: 0.15 }} />
+              {[T.nav.compound, T.nav.retirement, T.nav.statements].map((label, i) => (
+                <span key={label} className="text-xs" style={{ color: i === 0 ? INK : MUTED, opacity: i === 0 ? 0.8 : 1 }}>
+                  {label}
+                </span>
               ))}
             </div>
-            <div className="p-5 space-y-4">
-              <div className="grid grid-cols-4 gap-2">
-                {[
-                  { label: lang === 'zh' ? '最終餘額' : 'Final Balance', value: 'NT$ 4,321,000', primary: true },
-                  { label: lang === 'zh' ? '總投入本金' : 'Total Principal', value: 'NT$ 2,400,000', primary: false },
-                  { label: lang === 'zh' ? '累計利息' : 'Total Interest', value: 'NT$ 1,921,000', primary: false },
-                  { label: 'CAGR', value: '7.00%', primary: false },
-                ].map(m => (
-                  <div key={m.label} className="bg-gray-50 rounded-lg p-3">
-                    <p className="text-xs text-gray-400 mb-1">{m.label}</p>
-                    <p className="text-xs font-bold" style={{ color: m.primary ? PRIMARY : '#374151' }}>{m.value}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="rounded-xl border border-gray-100 p-4">
-                <p className="text-xs text-gray-400 mb-3">{lang === 'zh' ? '複利成長曲線' : 'Compound Growth Curve'}</p>
-                <div className="flex items-end gap-0.5 h-24">
-                  {Array.from({ length: 24 }, (_, i) => (
-                    <div key={i} className="flex-1 rounded-t" style={{
-                      height: `${10 + Math.pow(i / 23, 1.6) * 90}%`,
-                      backgroundColor: i % 2 === 0 ? PRIMARY : '#94A3B8',
-                      opacity: 0.6 + (i / 23) * 0.4,
-                    }} />
-                  ))}
+            {/* stats */}
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              {[
+                { label: lang === 'zh' ? '最終餘額' : 'Final Balance',    value: '4,321,000', accent: true  },
+                { label: lang === 'zh' ? '總投入本金' : 'Total Principal', value: '2,400,000', accent: false },
+                { label: lang === 'zh' ? '累計利息' : 'Interest',         value: '1,921,000', accent: false },
+                { label: 'CAGR',                                           value: '7.00 %',    accent: false },
+              ].map(m => (
+                <div key={m.label} className="rounded-xl p-3" style={{ backgroundColor: BG }}>
+                  <p className="text-xs mb-1" style={{ color: MUTED }}>{m.label}</p>
+                  <p className="text-sm font-medium" style={{ color: m.accent ? ACCENT : INK, fontFamily: 'var(--font-mono)' }}>
+                    {m.accent ? '' : ''}{m.value}
+                  </p>
                 </div>
+              ))}
+            </div>
+            {/* mini chart */}
+            <div className="rounded-xl p-4" style={{ backgroundColor: BG }}>
+              <p className="text-xs mb-4" style={{ color: MUTED }}>
+                {lang === 'zh' ? '複利成長曲線' : 'Compound Growth'}
+              </p>
+              <div className="flex items-end gap-0.5 h-20">
+                {Array.from({ length: 20 }, (_, i) => (
+                  <div key={i} className="flex-1 rounded-sm" style={{
+                    height: `${8 + Math.pow(i / 19, 1.7) * 92}%`,
+                    backgroundColor: i === 19 ? ACCENT : INK,
+                    opacity: i === 19 ? 0.7 : 0.08 + (i / 19) * 0.18,
+                  }} />
+                ))}
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Features */}
-      <section className="max-w-6xl mx-auto px-6 py-16">
-        <p className="text-center text-xs font-medium tracking-widest uppercase text-gray-300 mb-12">
+      {/* ── Divider ── */}
+      <div className="max-w-5xl mx-auto px-8">
+        <div className="h-px" style={{ backgroundColor: INK, opacity: 0.08 }} />
+      </div>
+
+      {/* ── Features ── */}
+      <section className="max-w-5xl mx-auto px-8 py-24">
+        <p className="text-xs tracking-widest uppercase mb-16" style={{ color: MUTED }}>
           {T.landing.featuresLabel}
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {T.landing.features.map((f, i) => (
-            <div key={f.title} className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-col gap-4">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold text-gray-800">{f.title}</p>
+            <div key={f.title} className="rounded-2xl p-5" style={{ backgroundColor: SURFACE }}>
+              <div className="flex items-center gap-2 mb-5">
+                <p className="text-sm font-medium" style={{ color: INK }}>{f.title}</p>
                 {'soon' in f && f.soon && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">
-                    {lang === 'zh' ? '即將推出' : 'Soon'}
+                  <span className="text-xs px-2 py-0.5 rounded-md" style={{ backgroundColor: BG, color: MUTED }}>
+                    {lang === 'zh' ? '即將' : 'soon'}
                   </span>
                 )}
               </div>
-              <div className="flex-1">{CHARTS[i]}</div>
-              <p className="text-xs text-gray-400 leading-relaxed">{f.desc}</p>
+              {CHARTS[i]}
+              <p className="mt-5 text-xs leading-relaxed" style={{ color: MUTED }}>{f.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* CTA banner */}
-      <section className="max-w-6xl mx-auto px-6 py-12 mb-8">
-        <div className="rounded-2xl px-10 py-14 text-center" style={{ backgroundColor: PRIMARY }}>
-          <h2 className="text-2xl font-bold text-white mb-3">{T.landing.ctaBannerTitle}</h2>
-          <p className="text-sm mb-8" style={{ color: 'rgba(255,255,255,0.7)' }}>{T.landing.ctaBannerSub}</p>
-          <button
-            onClick={handleLogin}
-            className="inline-flex items-center gap-3 bg-white rounded-xl px-7 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
-          >
-            {GOOGLE_SVG}
-            {T.landing.cta}
-          </button>
+      {/* ── Divider ── */}
+      <div className="max-w-5xl mx-auto px-8">
+        <div className="h-px" style={{ backgroundColor: INK, opacity: 0.08 }} />
+      </div>
+
+      {/* ── CTA ── */}
+      <section className="max-w-5xl mx-auto px-8 py-24 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-8">
+        <div>
+          <p className="text-2xl font-bold mb-2">{T.landing.ctaBannerTitle}</p>
+          <p className="text-sm" style={{ color: MUTED }}>{T.landing.ctaBannerSub}</p>
         </div>
+        <button
+          onClick={handleLogin}
+          className="shrink-0 flex items-center gap-3 px-6 py-3 rounded-xl transition-opacity hover:opacity-70"
+          style={{ backgroundColor: INK, color: BG }}
+        >
+          {GOOGLE_SVG}
+          <span className="text-sm">{T.landing.cta}</span>
+        </button>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-100 py-8">
-        <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded" style={{ backgroundColor: PRIMARY }} />
-            <span className="text-sm font-semibold text-gray-400">{T.brand}</span>
-          </div>
-          <p className="text-xs text-gray-300">{T.landing.footerTagline}</p>
-        </div>
+      {/* ── Footer ── */}
+      <footer className="max-w-5xl mx-auto px-8 pb-12 flex items-center justify-between">
+        <span className="text-xs" style={{ color: MUTED }}>FinTool</span>
+        <span className="text-xs" style={{ color: MUTED }}>{T.landing.footerTagline}</span>
       </footer>
     </div>
   )
