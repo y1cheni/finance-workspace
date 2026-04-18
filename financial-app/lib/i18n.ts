@@ -1,0 +1,106 @@
+export type Lang = 'zh' | 'en'
+
+export const t = {
+  zh: {
+    brand: 'FinTool',
+    nav: {
+      signIn: '登入',
+      getStarted: '免費開始',
+      compound: '複利計算器',
+      retirement: '退休規劃',
+      statements: '財務報表',
+      formula: '自定義公式',
+      admin: '後台',
+      signOut: '登出',
+    },
+    landing: {
+      badge: '個人財務規劃工具',
+      headline: '把財務未來\n看得清清楚楚',
+      sub: '複利計算、退休規劃、財務報表、自定義公式圖表。\n一個工具，看懂你的錢。',
+      cta: '使用 Google 帳號免費開始',
+      ctaNote: '免費 · 不需信用卡 · 資料不外洩',
+      featuresLabel: '功能',
+      features: [
+        {
+          title: '複利計算器',
+          desc: '設定初始本金、定期定投與年化報酬率，即時預覽資產成長曲線，並比較不同利率下的最終結果。',
+        },
+        {
+          title: '退休規劃',
+          desc: '輸入目前年齡、預計退休年齡與每月支出，計算退休目標金額、每月需存入多少，並模擬提領期間的資產消耗。',
+        },
+        {
+          title: '財務報表',
+          desc: '輸入資產負債現況與成長假設，自動生成多年期資產負債表與損益表，並以圖表視覺化淨值走勢。',
+        },
+        {
+          title: '自定義公式',
+          desc: '不受限於制式模板，自行定義變數與公式，拉出任何你需要的財務圖表。即將推出。',
+          soon: true,
+        },
+      ],
+      ctaBannerTitle: '開始規劃你的財務未來',
+      ctaBannerSub: '免費使用，資料加密儲存，隨時存取你的財務情境。',
+      footerTagline: '個人財務規劃工具',
+    },
+    scenario: {
+      namePlaceholder: '情境名稱',
+      save: '儲存情境',
+      saving: '儲存中…',
+      load: '載入情境',
+      delete: '刪除',
+      export: '匯出 CSV',
+    },
+  },
+  en: {
+    brand: 'FinTool',
+    nav: {
+      signIn: 'Sign in',
+      getStarted: 'Get started free',
+      compound: 'Compound',
+      retirement: 'Retirement',
+      statements: 'Statements',
+      formula: 'Custom Formula',
+      admin: 'Admin',
+      signOut: 'Sign out',
+    },
+    landing: {
+      badge: 'Personal Finance Planner',
+      headline: 'See Your Financial\nFuture Clearly',
+      sub: 'Compound interest, retirement planning, financial statements, and custom formula charts.\nOne tool to understand your money.',
+      cta: 'Get started free with Google',
+      ctaNote: 'Free · No credit card · Your data stays private',
+      featuresLabel: 'Features',
+      features: [
+        {
+          title: 'Compound Calculator',
+          desc: 'Set your principal, monthly contributions, and annual return rate to instantly preview your asset growth curve.',
+        },
+        {
+          title: 'Retirement Planner',
+          desc: 'Enter your current age, target retirement age, and monthly expenses to calculate your retirement goal and monthly savings needed.',
+        },
+        {
+          title: 'Financial Statements',
+          desc: 'Input your current assets and liabilities with growth assumptions to auto-generate multi-year balance sheets and income statements.',
+        },
+        {
+          title: 'Custom Formula',
+          desc: 'Not limited to preset templates — define your own variables and formulas to generate any financial chart you need. Coming soon.',
+          soon: true,
+        },
+      ],
+      ctaBannerTitle: 'Start Planning Your Financial Future',
+      ctaBannerSub: 'Free to use, encrypted storage, access your scenarios anytime.',
+      footerTagline: 'Personal Finance Planner',
+    },
+    scenario: {
+      namePlaceholder: 'Scenario name',
+      save: 'Save scenario',
+      saving: 'Saving…',
+      load: 'Load scenario',
+      delete: 'Delete',
+      export: 'Export CSV',
+    },
+  },
+} as const

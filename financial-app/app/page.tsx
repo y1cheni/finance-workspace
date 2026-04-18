@@ -2,71 +2,10 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
+import { useLang } from '@/components/LanguageProvider'
+import { t } from '@/lib/i18n'
 
 const PRIMARY = '#96B3D1'
-
-const FEATURES = [
-  {
-    title: '複利計算器',
-    desc: '設定初始本金、定期定投與年化報酬率，即時預覽資產成長曲線，並比較不同利率下的最終結果。',
-    chart: (
-      <div className="relative h-28 flex items-end gap-1 px-1">
-        {[30, 45, 55, 62, 72, 80, 88, 95].map((h, i) => (
-          <div key={i} className="flex-1 rounded-t" style={{ height: `${h}%`, backgroundColor: i === 7 ? PRIMARY : `${PRIMARY}${Math.round(40 + i * 20).toString(16)}` }} />
-        ))}
-      </div>
-    ),
-  },
-  {
-    title: '退休規劃',
-    desc: '輸入目前年齡、預計退休年齡與每月支出，計算退休目標金額、每月需存入多少，並模擬提領期間的資產消耗。',
-    chart: (
-      <div className="relative h-28 overflow-hidden">
-        <svg viewBox="0 0 200 80" className="w-full h-full" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={PRIMARY} stopOpacity="0.3" />
-              <stop offset="100%" stopColor={PRIMARY} stopOpacity="0.02" />
-            </linearGradient>
-          </defs>
-          <path d="M0 80 Q50 60 100 30 Q150 5 200 2 L200 80 Z" fill="url(#g1)" />
-          <path d="M0 80 Q50 60 100 30 Q150 5 200 2" fill="none" stroke={PRIMARY} strokeWidth="2" />
-        </svg>
-      </div>
-    ),
-  },
-  {
-    title: '財務報表',
-    desc: '輸入資產負債現況與成長假設，自動生成多年期資產負債表與損益表，並以圖表視覺化淨值走勢。',
-    chart: (
-      <div className="relative h-28 flex items-end gap-0.5 px-1">
-        {[
-          { a: 60, b: 30 }, { a: 65, b: 28 }, { a: 70, b: 26 },
-          { a: 78, b: 22 }, { a: 85, b: 18 }, { a: 90, b: 15 }, { a: 95, b: 10 },
-        ].map((d, i) => (
-          <div key={i} className="flex-1 flex flex-col-reverse gap-0.5">
-            <div className="rounded-t" style={{ height: `${d.a}%`, backgroundColor: PRIMARY, opacity: 0.7 }} />
-            <div className="rounded-t" style={{ height: `${d.b}%`, backgroundColor: '#374151', opacity: 0.15 }} />
-          </div>
-        ))}
-      </div>
-    ),
-  },
-  {
-    title: '自定義公式',
-    desc: '不受限於制式模板，自行定義變數與公式，拉出任何你需要的財務圖表。即將推出。',
-    chart: (
-      <div className="h-28 flex items-center justify-center">
-        <div className="font-mono text-xs text-gray-300 space-y-1.5">
-          <div><span style={{ color: PRIMARY }}>x</span> = 本金 × (1 + r)^n</div>
-          <div><span style={{ color: PRIMARY }}>IRR</span> = f(現金流, 期數)</div>
-          <div><span style={{ color: PRIMARY }}>ROI</span> = (收益 - 成本) / 成本</div>
-        </div>
-      </div>
-    ),
-    soon: true,
-  },
-]
 
 const GOOGLE_SVG = (
   <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
@@ -77,8 +16,45 @@ const GOOGLE_SVG = (
   </svg>
 )
 
+const CHARTS = [
+  <div key="compound" className="relative h-28 flex items-end gap-1 px-1">
+    {[30, 45, 55, 62, 72, 80, 88, 95].map((h, i) => (
+      <div key={i} className="flex-1 rounded-t" style={{ height: `${h}%`, backgroundColor: PRIMARY, opacity: 0.3 + i * 0.1 }} />
+    ))}
+  </div>,
+  <div key="retirement" className="relative h-28 overflow-hidden">
+    <svg viewBox="0 0 200 80" className="w-full h-full" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={PRIMARY} stopOpacity="0.3" />
+          <stop offset="100%" stopColor={PRIMARY} stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      <path d="M0 80 Q50 60 100 30 Q150 5 200 2 L200 80 Z" fill="url(#g1)" />
+      <path d="M0 80 Q50 60 100 30 Q150 5 200 2" fill="none" stroke={PRIMARY} strokeWidth="2" />
+    </svg>
+  </div>,
+  <div key="statements" className="relative h-28 flex items-end gap-0.5 px-1">
+    {[{ a: 60, b: 30 }, { a: 65, b: 28 }, { a: 70, b: 26 }, { a: 78, b: 22 }, { a: 85, b: 18 }, { a: 90, b: 15 }, { a: 95, b: 10 }].map((d, i) => (
+      <div key={i} className="flex-1 flex flex-col-reverse gap-0.5">
+        <div className="rounded-t" style={{ height: `${d.a}%`, backgroundColor: PRIMARY, opacity: 0.65 }} />
+        <div className="rounded-t" style={{ height: `${d.b}%`, backgroundColor: '#374151', opacity: 0.12 }} />
+      </div>
+    ))}
+  </div>,
+  <div key="formula" className="h-28 flex items-center justify-center">
+    <div className="font-mono text-xs text-gray-300 space-y-1.5">
+      <div><span style={{ color: PRIMARY }}>x</span> = P × (1 + r)^n</div>
+      <div><span style={{ color: PRIMARY }}>IRR</span> = f(cashflow, n)</div>
+      <div><span style={{ color: PRIMARY }}>ROI</span> = (gain − cost) / cost</div>
+    </div>
+  </div>,
+]
+
 export default function LandingPage() {
   const router = useRouter()
+  const { lang, setLang } = useLang()
+  const T = t[lang]
 
   useEffect(() => {
     createClient().auth.getUser().then(({ data }) => {
@@ -102,14 +78,32 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-md" style={{ backgroundColor: PRIMARY }} />
-            <span className="font-semibold text-gray-900 text-sm">FinTool</span>
+            <span className="font-semibold text-gray-900 text-sm">{T.brand}</span>
           </div>
-          <button
-            onClick={handleLogin}
-            className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-          >
-            登入
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Language toggle */}
+            <button
+              onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+              className="text-xs font-medium px-2.5 py-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              {lang === 'zh' ? 'EN' : '中文'}
+            </button>
+            {/* Get started */}
+            <button
+              onClick={handleLogin}
+              className="text-sm font-medium text-white px-4 py-1.5 rounded-lg transition-colors"
+              style={{ backgroundColor: PRIMARY }}
+            >
+              {T.nav.getStarted}
+            </button>
+            {/* Sign in */}
+            <button
+              onClick={handleLogin}
+              className="text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors px-2"
+            >
+              {T.nav.signIn}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -117,63 +111,57 @@ export default function LandingPage() {
       <section className="max-w-6xl mx-auto px-6 pt-20 pb-16 flex flex-col lg:flex-row items-center gap-16">
         <div className="flex-1 max-w-lg">
           <p className="text-xs font-medium tracking-widest uppercase mb-4" style={{ color: PRIMARY }}>
-            個人財務規劃工具
+            {T.landing.badge}
           </p>
-          <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 leading-tight mb-6">
-            把財務未來<br />看得清清楚楚
+          <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 leading-tight mb-6 whitespace-pre-line">
+            {T.landing.headline}
           </h1>
-          <p className="text-gray-400 text-base leading-relaxed mb-10">
-            複利計算、退休規劃、財務報表、自定義公式圖表。<br />
-            一個工具，看懂你的錢。
+          <p className="text-gray-400 text-base leading-relaxed mb-10 whitespace-pre-line">
+            {T.landing.sub}
           </p>
           <button
             onClick={handleLogin}
             className="inline-flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-6 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
           >
             {GOOGLE_SVG}
-            使用 Google 帳號免費開始
+            {T.landing.cta}
           </button>
-          <p className="text-xs text-gray-300 mt-4">免費 · 不需信用卡 · 資料不外洩</p>
+          <p className="text-xs text-gray-300 mt-4">{T.landing.ctaNote}</p>
         </div>
 
         {/* Product mockup */}
         <div className="flex-1 w-full max-w-xl">
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            {/* fake nav bar */}
             <div className="border-b border-gray-100 px-4 py-3 flex items-center gap-4">
               <div className="w-5 h-5 rounded" style={{ backgroundColor: PRIMARY, opacity: 0.7 }} />
-              {['複利計算器', '退休規劃', '財務報表'].map(t => (
-                <span key={t} className="text-xs text-gray-400">{t}</span>
+              {[T.nav.compound, T.nav.retirement, T.nav.statements].map(label => (
+                <span key={label} className="text-xs text-gray-400">{label}</span>
               ))}
             </div>
-            {/* fake content */}
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-4 gap-2">
                 {[
-                  { label: '最終餘額', value: 'NT$ 4,321,000' },
-                  { label: '總投入本金', value: 'NT$ 2,400,000' },
-                  { label: '累計利息', value: 'NT$ 1,921,000' },
-                  { label: '實際 CAGR', value: '7.00%' },
+                  { label: lang === 'zh' ? '最終餘額' : 'Final Balance', value: 'NT$ 4,321,000', primary: true },
+                  { label: lang === 'zh' ? '總投入本金' : 'Total Principal', value: 'NT$ 2,400,000', primary: false },
+                  { label: lang === 'zh' ? '累計利息' : 'Total Interest', value: 'NT$ 1,921,000', primary: false },
+                  { label: 'CAGR', value: '7.00%', primary: false },
                 ].map(m => (
                   <div key={m.label} className="bg-gray-50 rounded-lg p-3">
                     <p className="text-xs text-gray-400 mb-1">{m.label}</p>
-                    <p className="text-xs font-bold" style={{ color: m.label === '最終餘額' ? PRIMARY : '#374151' }}>{m.value}</p>
+                    <p className="text-xs font-bold" style={{ color: m.primary ? PRIMARY : '#374151' }}>{m.value}</p>
                   </div>
                 ))}
               </div>
               <div className="rounded-xl border border-gray-100 p-4">
-                <p className="text-xs text-gray-400 mb-3">複利成長曲線</p>
+                <p className="text-xs text-gray-400 mb-3">{lang === 'zh' ? '複利成長曲線' : 'Compound Growth Curve'}</p>
                 <div className="flex items-end gap-0.5 h-24">
-                  {Array.from({ length: 24 }, (_, i) => {
-                    const h = 10 + Math.pow(i / 23, 1.6) * 90
-                    return (
-                      <div key={i} className="flex-1 rounded-t" style={{
-                        height: `${h}%`,
-                        backgroundColor: i % 2 === 0 ? PRIMARY : '#94A3B8',
-                        opacity: 0.6 + (i / 23) * 0.4,
-                      }} />
-                    )
-                  })}
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <div key={i} className="flex-1 rounded-t" style={{
+                      height: `${10 + Math.pow(i / 23, 1.6) * 90}%`,
+                      backgroundColor: i % 2 === 0 ? PRIMARY : '#94A3B8',
+                      opacity: 0.6 + (i / 23) * 0.4,
+                    }} />
+                  ))}
                 </div>
               </div>
             </div>
@@ -183,34 +171,38 @@ export default function LandingPage() {
 
       {/* Features */}
       <section className="max-w-6xl mx-auto px-6 py-16">
-        <p className="text-center text-xs font-medium tracking-widest uppercase text-gray-300 mb-12">功能</p>
+        <p className="text-center text-xs font-medium tracking-widest uppercase text-gray-300 mb-12">
+          {T.landing.featuresLabel}
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {FEATURES.map(f => (
+          {T.landing.features.map((f, i) => (
             <div key={f.title} className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-col gap-4">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-semibold text-gray-800">{f.title}</p>
-                {f.soon && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">即將推出</span>
+                {'soon' in f && f.soon && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">
+                    {lang === 'zh' ? '即將推出' : 'Soon'}
+                  </span>
                 )}
               </div>
-              <div className="flex-1">{f.chart}</div>
+              <div className="flex-1">{CHARTS[i]}</div>
               <p className="text-xs text-gray-400 leading-relaxed">{f.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* CTA */}
+      {/* CTA banner */}
       <section className="max-w-6xl mx-auto px-6 py-12 mb-8">
         <div className="rounded-2xl px-10 py-14 text-center" style={{ backgroundColor: PRIMARY }}>
-          <h2 className="text-2xl font-bold text-white mb-3">開始規劃你的財務未來</h2>
-          <p className="text-sm mb-8" style={{ color: 'rgba(255,255,255,0.7)' }}>免費使用，資料加密儲存，隨時存取你的財務情境。</p>
+          <h2 className="text-2xl font-bold text-white mb-3">{T.landing.ctaBannerTitle}</h2>
+          <p className="text-sm mb-8" style={{ color: 'rgba(255,255,255,0.7)' }}>{T.landing.ctaBannerSub}</p>
           <button
             onClick={handleLogin}
             className="inline-flex items-center gap-3 bg-white rounded-xl px-7 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
           >
             {GOOGLE_SVG}
-            使用 Google 帳號免費開始
+            {T.landing.cta}
           </button>
         </div>
       </section>
@@ -220,9 +212,9 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 rounded" style={{ backgroundColor: PRIMARY }} />
-            <span className="text-sm font-semibold text-gray-400">FinTool</span>
+            <span className="text-sm font-semibold text-gray-400">{T.brand}</span>
           </div>
-          <p className="text-xs text-gray-300">個人財務規劃工具</p>
+          <p className="text-xs text-gray-300">{T.landing.footerTagline}</p>
         </div>
       </footer>
     </div>
