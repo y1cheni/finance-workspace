@@ -3,13 +3,9 @@ import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
+import { useLang } from '@/components/LanguageProvider'
+import { t } from '@/lib/i18n'
 import type { User } from '@supabase/supabase-js'
-
-const NAV = [
-  { href: '/compound',   label: '複利計算器' },
-  { href: '/retirement', label: '退休規劃'   },
-  { href: '/statements', label: '財務報表'   },
-]
 
 const ADMIN_EMAIL = 'yichenjasperliao@gmail.com'
 
@@ -18,6 +14,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const { lang, setLang } = useLang()
+  const T = t[lang]
+
+  const NAV = [
+    { href: '/compound',   label: T.nav.compound   },
+    { href: '/retirement', label: T.nav.retirement },
+    { href: '/statements', label: T.nav.statements  },
+  ]
 
   useEffect(() => {
     const supabase = createClient()
@@ -96,10 +100,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {user?.user_metadata?.full_name ?? user?.email}
               </span>
               <button
+                onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+                className="text-xs font-medium px-2 py-1 rounded text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                {lang === 'zh' ? 'EN' : '中文'}
+              </button>
+              <button
                 onClick={handleSignOut}
                 className="text-xs text-gray-300 hover:text-gray-600 transition-colors"
               >
-                登出
+                {T.nav.signOut}
               </button>
             </div>
           </div>
