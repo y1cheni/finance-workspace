@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { D } from '@/lib/design'
 import FormulaPanel from '@/components/FormulaPanel'
+import { readStore } from '@/lib/shared-store'
 
 const TAX_FORMULAS = [
   {
@@ -95,7 +96,20 @@ export default function TaxPage() {
 
   return (
     <div style={{ fontFamily: D.font }}>
-      <h1 className="text-xl font-bold mb-6" style={{ color: D.ink }}>稅務試算</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl font-bold" style={{ color: D.ink }}>稅務試算</h1>
+        <button
+          onClick={() => {
+            const s = readStore()
+            if (s.retirementWithdrawal) setSalary(s.retirementWithdrawal * 12)
+          }}
+          className="text-xs px-3 py-1.5 rounded-xl transition-opacity hover:opacity-70"
+          style={{ backgroundColor: D.surface, color: D.muted }}
+          title="將退休規劃中的月提領金額（年化）載入為薪資所得"
+        >
+          ↓ 從退休規劃載入提領金額
+        </button>
+      </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
         <aside className="lg:w-72 shrink-0 space-y-4">

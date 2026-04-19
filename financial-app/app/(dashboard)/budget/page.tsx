@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import ScenarioBar from '@/components/ScenarioBar'
 import { D } from '@/lib/design'
+import { readStore } from '@/lib/shared-store'
 
 const LAYERS = [
   {
@@ -92,7 +93,20 @@ export default function BudgetPage() {
 
   return (
     <div style={{ fontFamily: D.font }}>
-      <h1 className="text-xl font-bold mb-6" style={{ color: D.ink }}>預算規劃</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl font-bold" style={{ color: D.ink }}>預算規劃</h1>
+        <button
+          onClick={() => {
+            const s = readStore()
+            if (s.monthlySubscriptionTotal) set('subscription', Math.round(s.monthlySubscriptionTotal))
+          }}
+          className="text-xs px-3 py-1.5 rounded-xl transition-opacity hover:opacity-70"
+          style={{ backgroundColor: D.surface, color: D.muted }}
+          title="從訂閱管理載入每月訂閱費用"
+        >
+          ↓ 從訂閱管理同步
+        </button>
+      </div>
 
       <div className="mb-4">
         <ScenarioBar page="budget" currentParams={currentParams} onLoad={handleLoad} onExport={handleExport} />

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { D } from '@/lib/design'
+import { writeStore } from '@/lib/shared-store'
 
 const USD_RATE = 32.5
 
@@ -85,6 +86,11 @@ export default function SubscriptionsPage() {
   const activeSubs   = subs.filter(s => s.active)
   const monthlyTotal = activeSubs.reduce((sum, s) => sum + toMonthlyTWD(s.cost, s.currency, s.billing_cycle, rate), 0)
   const annualTotal  = monthlyTotal * 12
+
+  // sync to shared store
+  useEffect(() => {
+    writeStore({ monthlySubscriptionTotal: monthlyTotal })
+  }, [monthlyTotal])
 
   const upcoming = subs
     .filter(s => s.active && s.next_charge_date)
