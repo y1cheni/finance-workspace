@@ -1,6 +1,34 @@
 'use client'
 import { useState } from 'react'
 import { D } from '@/lib/design'
+import FormulaPanel from '@/components/FormulaPanel'
+
+const TAX_FORMULAS = [
+  {
+    name: '應繳稅額（速算公式）',
+    formula: '應繳稅額 = 課稅淨額 × 稅率 − 累進差額',
+    vars: [
+      { sym: '課稅淨額', desc: '所得總額 − 所有扣除額' },
+      { sym: '稅率',    desc: '依級距決定（5% / 12% / 20% / 30% / 40%）' },
+      { sym: '累進差額', desc: '各級距對應的累進差額' },
+    ],
+  },
+  {
+    name: '有效稅率',
+    formula: '有效稅率 = 應繳稅額 / 所得總額 × 100%',
+  },
+  {
+    name: '薪資所得扣除額',
+    formula: '薪資扣除額 = min(薪資所得, 218,000)',
+    vars: [
+      { sym: '218,000', desc: '2025 年薪資所得特別扣除額上限' },
+    ],
+  },
+  {
+    name: '房租支出扣除額',
+    formula: '房租扣除額 = min(實際房租, 180,000)',
+  },
+]
 
 const BRACKETS = [
   { limit: 590_000,   rate: 0.05, deduct: 0        },
@@ -208,6 +236,8 @@ export default function TaxPage() {
               <p className="text-xs" style={{ color: D.muted }}>{overseasNote}</p>
             </div>
           )}
+
+          <FormulaPanel formulas={TAX_FORMULAS} />
         </div>
       </div>
     </div>
