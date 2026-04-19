@@ -167,6 +167,35 @@ export default function CompoundPage() {
             </table>
           </div>
 
+          {/* Rule of 72 */}
+          <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+            <p className="text-xs mb-4" style={{ color: D.muted }}>Rule of 72 — 資產翻倍快速估算</p>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+              <div>
+                <p className="text-xs mb-1" style={{ color: D.muted }}>在 {rate.toFixed(1)}% 年利率下，資產翻倍需要</p>
+                <p className="text-3xl font-bold" style={{ color: D.accent }}>
+                  {(72 / rate).toFixed(1)} <span className="text-lg">年</span>
+                </p>
+              </div>
+              <div className="flex-1">
+                <p className="font-mono text-xs rounded-xl px-4 py-2 mb-2"
+                  style={{ backgroundColor: D.bg, color: D.accent }}>
+                  翻倍年數 ≈ 72 ÷ 年化利率
+                </p>
+                <div className="grid grid-cols-4 gap-2 mt-3">
+                  {[3, 5, 7, 10, 12, 15].map(r72 => (
+                    <div key={r72} className="text-center">
+                      <p className="text-xs font-semibold" style={{ color: r72 === Math.round(rate) ? D.accent : D.ink }}>
+                        {r72}%
+                      </p>
+                      <p className="text-xs" style={{ color: D.muted }}>{(72 / r72).toFixed(0)} 年</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <FormulaPanel formulas={FORMULAS} />
         </div>
       </div>

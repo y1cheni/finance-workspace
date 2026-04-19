@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { createClient } from '@/lib/supabase'
 import { D } from '@/lib/design'
+import { writeStore } from '@/lib/shared-store'
 
 interface Debt {
   id: string
@@ -22,48 +23,43 @@ const EMPTY: Omit<Debt, 'id'> = {
 
 const TYPES = ['信貸', '房貸', '車貸', '學貸', '信用卡', '其他']
 
-function fmt(n: number) {
-  return `NT$ ${Math.round(n).toLocaleString('zh-TW')}`
-}
+function fmt(n: number) { return `NT$ ${Math.round(n).toLocaleString('zh-TW')}` }
 
-function snowball(debts: Debt[], extraPayment: number) {
+interface StrategyResult { months: number; totalInterest: number }
+
+function simulate(debts: Debt[], extraPayment: number, mode: 'snowball' | 'avalanche'): StrategyResult {
   let ds = debts.map(d => ({ ...d, rem: d.remaining }))
   let month = 0
+  let totalInterest = 0
   while (ds.some(d => d.rem > 0) && month < 600) {
     month++
     let extra = extraPayment
     ds = ds
-      .sort((a, b) => a.rem - b.rem)
+      .sort((a, b) => mode === 'snowball' ? a.rem - b.rem : b.annual_rate - a.annual_rate)
       .map(d => {
         if (d.rem <= 0) return d
         const interest = d.rem * (d.annual_rate / 100 / 12)
+        totalInterest += interest
         const pay = d.monthly_payment + extra
         extra = Math.max(0, pay - d.rem - interest)
         d.rem = Math.max(0, d.rem + interest - pay)
         return d
       })
   }
-  return month
+  return { months: month, totalInterest }
 }
 
-function avalanche(debts: Debt[], extraPayment: number) {
-  let ds = debts.map(d => ({ ...d, rem: d.remaining }))
-  let month = 0
-  while (ds.some(d => d.rem > 0) && month < 600) {
-    month++
-    let extra = extraPayment
-    ds = ds
-      .sort((a, b) => b.annual_rate - a.annual_rate)
-      .map(d => {
-        if (d.rem <= 0) return d
-        const interest = d.rem * (d.annual_rate / 100 / 12)
-        const pay = d.monthly_payment + extra
-        extra = Math.max(0, pay - d.rem - interest)
-        d.rem = Math.max(0, d.rem + interest - pay)
-        return d
-      })
+// Per-debt months to payoff (no extra)
+function debtMonths(d: Debt): number {
+  if (d.monthly_payment <= 0 || d.remaining <= 0) return 0
+  let rem = d.remaining
+  let m = 0
+  const mr = d.annual_rate / 100 / 12
+  while (rem > 0 && m < 600) {
+    m++
+    rem = rem * (1 + mr) - d.monthly_payment
   }
-  return month
+  return m
 }
 
 export default function DebtsPage() {
@@ -79,10 +75,18 @@ export default function DebtsPage() {
 
   useEffect(() => {
     supabase.from('debts').select('*').order('remaining', { ascending: false }).then(({ data }) => {
-      setDebts((data ?? []) as Debt[])
+      const d = (data ?? []) as Debt[]
+      setDebts(d)
       setLoading(false)
     })
   }, [])
+
+  // sync to shared store whenever debts change
+  useEffect(() => {
+    const totalDebt = debts.reduce((s, d) => s + d.remaining, 0)
+    const totalMonthlyDebtPayment = debts.reduce((s, d) => s + d.monthly_payment, 0)
+    writeStore({ totalDebt, totalMonthlyDebtPayment })
+  }, [debts])
 
   const openNew  = () => { setEditing(null); setDraft(EMPTY); setShowForm(true) }
   const openEdit = (d: Debt) => { setEditing(d); setDraft({ ...d }); setShowForm(true) }
@@ -110,8 +114,10 @@ export default function DebtsPage() {
   const totalPayment = debts.reduce((s, d) => s + d.monthly_payment, 0)
   const dti          = income > 0 ? (totalPayment / income) * 100 : 0
 
-  const sbMonths = debts.length > 0 ? snowball(debts, extra) : 0
-  const avMonths = debts.length > 0 ? avalanche(debts, extra) : 0
+  const sbBase = debts.length > 0 ? simulate(debts, 0, 'snowball') : { months: 0, totalInterest: 0 }
+  const avBase = debts.length > 0 ? simulate(debts, 0, 'avalanche') : { months: 0, totalInterest: 0 }
+  const sbExtra = debts.length > 0 ? simulate(debts, extra, 'snowball') : { months: 0, totalInterest: 0 }
+  const avExtra = debts.length > 0 ? simulate(debts, extra, 'avalanche') : { months: 0, totalInterest: 0 }
 
   const chartData = debts.map(d => ({
     name: d.name,
@@ -136,12 +142,13 @@ export default function DebtsPage() {
         </button>
       </div>
 
+      {/* 摘要 */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
-          { label: '總負債餘額',   value: fmt(totalDebt),      accent: true  },
-          { label: '每月還款合計', value: fmt(totalPayment),   accent: false },
+          { label: '總負債餘額',   value: fmt(totalDebt),      accent: true,  danger: false },
+          { label: '每月還款合計', value: fmt(totalPayment),   accent: false, danger: false },
           { label: 'DTI 比率',    value: `${dti.toFixed(1)}%`, accent: false, danger: dti > 36 },
-          { label: '負債筆數',    value: `${debts.length} 筆`, accent: false },
+          { label: '負債筆數',    value: `${debts.length} 筆`, accent: false, danger: false },
         ].map(m => (
           <div key={m.label} className="rounded-2xl p-4" style={{ backgroundColor: D.surface }}>
             <p className="text-xs mb-1" style={{ color: D.muted }}>{m.label}</p>
@@ -151,13 +158,13 @@ export default function DebtsPage() {
       </div>
 
       {dti > 0 && (
-        <div className="rounded-2xl p-4 mb-4 flex items-center gap-4" style={{ backgroundColor: D.surface }}>
+        <div className="rounded-2xl p-4 mb-4 flex flex-wrap items-center gap-4" style={{ backgroundColor: D.surface }}>
           <label className="text-xs shrink-0" style={{ color: D.muted }}>每月收入（計算 DTI 用）</label>
           <input type="number" value={income} step={5000}
             onChange={e => setIncome(Number(e.target.value))}
             className="w-36 rounded-xl px-3 py-1.5 text-xs focus:outline-none"
             style={{ backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }} />
-          <p className="text-xs ml-2" style={{ color: D.muted }}>
+          <p className="text-xs" style={{ color: D.muted }}>
             {dti <= 28 ? 'DTI ≤ 28%：健康' : dti <= 36 ? 'DTI 28~36%：注意' : 'DTI > 36%：高風險，建議減少負債'}
           </p>
         </div>
@@ -165,41 +172,52 @@ export default function DebtsPage() {
 
       <div className="flex flex-col lg:flex-row gap-6">
         <div className="flex-1 space-y-4">
+          {/* 列表 */}
           <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ borderBottom: `1px solid var(--subtle)` }}>
-                    {['名稱', '類型', '剩餘金額', '每月還款', '年利率', '還清日', ''].map(h => (
+                    {['名稱', '類型', '剩餘金額', '每月還款', '年利率', '總利息', '還清月數', ''].map(h => (
                       <th key={h} className="text-left py-2 pr-4 text-xs font-medium" style={{ color: D.muted }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {debts.map(d => (
-                    <tr key={d.id} style={{ borderBottom: `1px solid var(--subtle)` }}>
-                      <td className="py-2 pr-4 font-medium" style={{ color: D.ink }}>{d.name}</td>
-                      <td className="py-2 pr-4 text-xs" style={{ color: D.muted }}>{d.debt_type}</td>
-                      <td className="py-2 pr-4 font-semibold" style={{ color: D.accent }}>{fmt(d.remaining)}</td>
-                      <td className="py-2 pr-4" style={{ color: D.muted }}>{fmt(d.monthly_payment)}</td>
-                      <td className="py-2 pr-4" style={{ color: D.muted }}>{d.annual_rate}%</td>
-                      <td className="py-2 pr-4 text-xs" style={{ color: D.muted }}>{d.end_date ?? '—'}</td>
-                      <td className="py-2">
-                        <div className="flex gap-2">
-                          <button onClick={() => openEdit(d)} className="text-xs transition-opacity hover:opacity-50" style={{ color: D.muted }}>編輯</button>
-                          <button onClick={() => del(d.id)} className="text-xs transition-opacity hover:opacity-50" style={{ color: D.danger }}>刪除</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {debts.map(d => {
+                    const months = debtMonths(d)
+                    const totalInterest = months > 0
+                      ? d.monthly_payment * months - d.remaining
+                      : 0
+                    return (
+                      <tr key={d.id} style={{ borderBottom: `1px solid var(--subtle)` }}>
+                        <td className="py-2 pr-4 font-medium" style={{ color: D.ink }}>{d.name}</td>
+                        <td className="py-2 pr-4 text-xs" style={{ color: D.muted }}>{d.debt_type}</td>
+                        <td className="py-2 pr-4 font-semibold" style={{ color: D.accent }}>{fmt(d.remaining)}</td>
+                        <td className="py-2 pr-4" style={{ color: D.muted }}>{fmt(d.monthly_payment)}</td>
+                        <td className="py-2 pr-4" style={{ color: D.muted }}>{d.annual_rate}%</td>
+                        <td className="py-2 pr-4 text-xs" style={{ color: D.danger }}>{fmt(totalInterest)}</td>
+                        <td className="py-2 pr-4 text-xs" style={{ color: D.muted }}>
+                          {months >= 600 ? '600+' : months} 個月
+                        </td>
+                        <td className="py-2">
+                          <div className="flex gap-2">
+                            <button onClick={() => openEdit(d)} className="text-xs transition-opacity hover:opacity-50" style={{ color: D.muted }}>編輯</button>
+                            <button onClick={() => del(d.id)} className="text-xs transition-opacity hover:opacity-50" style={{ color: D.danger }}>刪除</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                   {debts.length === 0 && (
-                    <tr><td colSpan={7} className="py-8 text-center text-xs" style={{ color: D.muted }}>尚無負債項目</td></tr>
+                    <tr><td colSpan={8} className="py-8 text-center text-xs" style={{ color: D.muted }}>尚無負債項目</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           </div>
 
+          {/* 圖表 */}
           {debts.length > 0 && (
             <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
               <p className="text-xs mb-4" style={{ color: D.muted }}>負債結構</p>
@@ -221,39 +239,88 @@ export default function DebtsPage() {
           )}
         </div>
 
+        {/* 還款策略 */}
         {debts.length > 0 && (
-          <div className="lg:w-72 shrink-0">
+          <div className="lg:w-80 shrink-0 space-y-4">
             <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
               <p className="text-xs mb-4" style={{ color: D.muted }}>還款策略比較</p>
-              <div className="mb-3">
+              <div className="mb-4">
                 <label className="text-xs block mb-1" style={{ color: D.muted }}>每月額外還款 (NT$)</label>
                 <input type="number" value={extra} step={1000}
                   onChange={e => setExtra(Number(e.target.value))}
                   className="w-full rounded-xl px-3 py-2 text-xs focus:outline-none"
                   style={{ backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }} />
               </div>
-              <div className="space-y-3 mt-4">
-                {[
-                  { name: '雪球法（餘額小→大）', months: sbMonths, desc: '先還最小筆，心理成就感強' },
-                  { name: '雪崩法（利率高→低）', months: avMonths, desc: '先還利率最高，總利息最少' },
-                ].map(s => (
-                  <div key={s.name} className="p-3 rounded-xl" style={{ backgroundColor: D.bg }}>
-                    <p className="text-xs font-semibold" style={{ color: D.ink }}>{s.name}</p>
-                    <p className="text-base font-bold mt-1" style={{ color: D.accent }}>
-                      {s.months >= 600 ? '600+ 個月' : `${s.months} 個月`}
-                      <span className="text-xs font-normal ml-1" style={{ color: D.muted }}>
-                        （{s.months < 600 ? `約 ${(s.months / 12).toFixed(1)} 年` : '請增加還款額'}）
-                      </span>
-                    </p>
-                    <p className="text-xs mt-1" style={{ color: D.muted }}>{s.desc}</p>
+
+              {[
+                {
+                  name: '雪球法', sub: '餘額小→大，心理成就感強',
+                  base: sbBase, extra: sbExtra,
+                },
+                {
+                  name: '雪崩法', sub: '利率高→低，總利息最少',
+                  base: avBase, extra: avExtra,
+                },
+              ].map(s => (
+                <div key={s.name} className="mb-4 p-4 rounded-xl" style={{ backgroundColor: D.bg }}>
+                  <p className="text-xs font-semibold mb-1" style={{ color: D.ink }}>{s.name}</p>
+                  <p className="text-xs mb-3" style={{ color: D.muted }}>{s.sub}</p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-xs" style={{ color: D.muted }}>還清月數</p>
+                      <p className="text-base font-bold" style={{ color: D.accent }}>
+                        {s.extra.months >= 600 ? '600+' : s.extra.months}
+                        <span className="text-xs font-normal ml-1" style={{ color: D.muted }}>月</span>
+                      </p>
+                      {extra > 0 && s.extra.months < s.base.months && (
+                        <p className="text-xs" style={{ color: D.accent }}>
+                          省 {s.base.months - s.extra.months} 個月
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs" style={{ color: D.muted }}>總利息支出</p>
+                      <p className="text-sm font-bold" style={{ color: D.danger }}>
+                        {fmt(Math.round(s.extra.totalInterest))}
+                      </p>
+                      {extra > 0 && s.extra.totalInterest < s.base.totalInterest && (
+                        <p className="text-xs" style={{ color: D.accent }}>
+                          省息 {fmt(Math.round(s.base.totalInterest - s.extra.totalInterest))}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                ))}
-              </div>
+
+                  {extra > 0 && (
+                    <div className="mt-3 pt-3" style={{ borderTop: `1px solid var(--subtle)` }}>
+                      <div className="flex justify-between text-xs" style={{ color: D.muted }}>
+                        <span>額外還款效益（每月 +{fmt(extra)}）</span>
+                      </div>
+                      <div className="flex gap-4 mt-1">
+                        <div>
+                          <p className="text-xs" style={{ color: D.muted }}>節省時間</p>
+                          <p className="text-xs font-semibold" style={{ color: D.accent }}>
+                            {s.base.months - s.extra.months} 個月
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs" style={{ color: D.muted }}>節省利息</p>
+                          <p className="text-xs font-semibold" style={{ color: D.accent }}>
+                            {fmt(Math.round(s.base.totalInterest - s.extra.totalInterest))}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         )}
       </div>
 
+      {/* 表單 Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
           <div className="rounded-2xl p-6 w-full max-w-md" style={{ backgroundColor: D.surface }}>

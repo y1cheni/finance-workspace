@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
          Legend, ReferenceLine, ResponsiveContainer } from 'recharts'
 import { compoundSeries, annuityPv, monthlySavingsNeeded, yearsToTarget } from '@/lib/math-engine'
@@ -8,6 +8,7 @@ import Slider from '@/components/Slider'
 import FormulaPanel from '@/components/FormulaPanel'
 import { downloadCSV } from '@/lib/csv-export'
 import { D } from '@/lib/design'
+import { readStore, writeStore } from '@/lib/shared-store'
 
 function fmt(n: number) { return `NT$ ${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
 
@@ -55,6 +56,28 @@ export default function RetirementPage() {
   const [annualReturn,  setAnnualReturn]  = useState(7)
   const [inflation,     setInflation]     = useState(2)
   const [mode,          setMode]          = useState<'fixed' | '4pct'>('fixed')
+
+  // 勞退 / 勞保 module
+  const [salary,         setSalary]         = useState(50_000)
+  const [selfRate,       setSelfRate]       = useState(6)      // 自提 %
+  const [laborYears,     setLaborYears]     = useState(30)     // 預計工作年數
+  const [laborReturn,    setLaborReturn]    = useState(3)      // 勞退基金報酬率 %
+  const [insuredSalary,  setInsuredSalary]  = useState(45_800) // 勞保月投保薪資
+  const [insuranceYears, setInsuranceYears] = useState(30)     // 保險年資
+
+  // 勞退帳戶試算
+  const laborMonthly = salary * (0.06 + selfRate / 100)
+  const laborR = laborReturn / 100 / 12
+  const laborN = laborYears * 12
+  const laborFV = laborMonthly * (Math.pow(1 + laborR, laborN) - 1) / laborR
+
+  // 勞保老年給付（月退休金估算）
+  const laborInsuranceMonthly = insuredSalary * insuranceYears * 0.0155
+
+  // sync monthly withdrawal to shared store (for tax integration)
+  useEffect(() => {
+    writeStore({ retirementWithdrawal: monthlyExp })
+  }, [monthlyExp])
 
   const currentParams = { currentAge, retirementAge, lifeExp, savings, monthlyExp, annualReturn, inflation, mode }
 
@@ -254,6 +277,109 @@ export default function RetirementPage() {
               </div>
             </div>
           )}
+
+          {/* 勞退 / 勞保 估算模塊 */}
+          <div className="rounded-2xl" style={{ backgroundColor: D.surface }}>
+            <div className="px-5 py-4" style={{ borderBottom: `1px solid var(--subtle)` }}>
+              <p className="text-xs font-medium" style={{ color: D.ink }}>勞退帳戶 + 勞保估算</p>
+              <p className="text-xs mt-0.5" style={{ color: D.muted }}>將退休金估算加入退休收入底線</p>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* 勞退帳戶 */}
+                <div>
+                  <p className="text-xs font-semibold mb-3" style={{ color: D.ink }}>勞工退休金帳戶</p>
+                  <div className="space-y-3">
+                    {[
+                      { label: '目前月薪 (NT$)', val: salary, set: setSalary, step: 1000, min: 10000, max: 300000 },
+                    ].map(f => (
+                      <div key={f.label}>
+                        <label className="text-xs block mb-1" style={{ color: D.muted }}>{f.label}</label>
+                        <input type="number" value={f.val} step={f.step} min={f.min} max={f.max}
+                          onChange={e => f.set(Number(e.target.value))}
+                          className="w-full rounded-xl px-3 py-2 text-xs focus:outline-none"
+                          style={{ backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }} />
+                      </div>
+                    ))}
+                    <Slider label={`自提率（雇主固定 6% + 自提 ${selfRate}%）`}
+                      value={selfRate} min={0} max={6} step={1}
+                      format={v => `${v}%`} onChange={setSelfRate} />
+                    <Slider label="預計工作年數" value={laborYears} min={1} max={45} step={1}
+                      format={v => `${v} 年`} onChange={setLaborYears} />
+                    <Slider label="勞退基金預估報酬率" value={laborReturn} min={2} max={8} step={0.5}
+                      format={v => `${v.toFixed(1)}%`} onChange={setLaborReturn} />
+                  </div>
+                  <div className="mt-4 p-4 rounded-xl" style={{ backgroundColor: D.bg }}>
+                    <p className="text-xs" style={{ color: D.muted }}>每月總提撥</p>
+                    <p className="text-base font-bold" style={{ color: D.ink }}>
+                      NT$ {Math.round(laborMonthly).toLocaleString('zh-TW')}
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: D.muted }}>
+                      雇主 6% + 自提 {selfRate}% = {(6 + selfRate)}%
+                    </p>
+                    <div className="mt-3 pt-3" style={{ borderTop: `1px solid var(--subtle)` }}>
+                      <p className="text-xs" style={{ color: D.muted }}>退休時勞退帳戶估算</p>
+                      <p className="text-xl font-bold mt-1" style={{ color: D.accent }}>
+                        NT$ {Math.round(laborFV).toLocaleString('zh-TW')}
+                      </p>
+                      <p className="text-xs mt-1" style={{ color: D.muted }}>
+                        月領估算：NT$ {Math.round(laborFV / (lifeExp - retirementAge) / 12).toLocaleString('zh-TW')} / 月
+                        （若 {lifeExp - retirementAge} 年平均提領）
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 勞保老年給付 */}
+                <div>
+                  <p className="text-xs font-semibold mb-3" style={{ color: D.ink }}>勞保老年給付（月退金估算）</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs block mb-1" style={{ color: D.muted }}>平均月投保薪資 (NT$)</label>
+                      <input type="number" value={insuredSalary} step={1000}
+                        onChange={e => setInsuredSalary(Number(e.target.value))}
+                        className="w-full rounded-xl px-3 py-2 text-xs focus:outline-none"
+                        style={{ backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }} />
+                      <p className="text-xs mt-1" style={{ color: D.muted }}>2025 最高投保薪資：45,800</p>
+                    </div>
+                    <Slider label="勞保保險年資" value={insuranceYears} min={1} max={45} step={1}
+                      format={v => `${v} 年`} onChange={setInsuranceYears} />
+                  </div>
+                  <div className="mt-4 p-4 rounded-xl" style={{ backgroundColor: D.bg }}>
+                    <p className="text-xs" style={{ color: D.muted }}>勞保月退休金估算</p>
+                    <p className="text-xl font-bold mt-1" style={{ color: D.accent }}>
+                      NT$ {Math.round(laborInsuranceMonthly).toLocaleString('zh-TW')} / 月
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: D.muted }}>
+                      公式：月投保薪資 × 年資 × 1.55%
+                    </p>
+                    <div className="mt-3 pt-3" style={{ borderTop: `1px solid var(--subtle)` }}>
+                      <p className="text-xs font-semibold" style={{ color: D.ink }}>退休收入合計估算</p>
+                      <div className="mt-2 space-y-1">
+                        {[
+                          { label: '勞保月退',      value: Math.round(laborInsuranceMonthly) },
+                          { label: '勞退月領',       value: Math.round(laborFV / (lifeExp - retirementAge) / 12) },
+                          { label: '目標月支出',     value: monthlyExp },
+                        ].map(row => (
+                          <div key={row.label} className="flex justify-between text-xs">
+                            <span style={{ color: D.muted }}>{row.label}</span>
+                            <span style={{ color: D.ink }}>NT$ {row.value.toLocaleString('zh-TW')}</span>
+                          </div>
+                        ))}
+                        <div className="pt-2 flex justify-between text-xs font-semibold"
+                          style={{ borderTop: `1px solid var(--subtle)` }}>
+                          <span style={{ color: D.muted }}>缺口（需自行準備）</span>
+                          <span style={{ color: D.accent }}>
+                            NT$ {Math.max(0, monthlyExp - Math.round(laborInsuranceMonthly) - Math.round(laborFV / (lifeExp - retirementAge) / 12)).toLocaleString('zh-TW')} / 月
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <FormulaPanel formulas={FORMULAS} />
         </div>

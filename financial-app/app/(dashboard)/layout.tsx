@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
@@ -19,18 +19,66 @@ const NAV_ICONS: Record<string, string> = {
   '/budget':        '◈',
   '/tax':           '§',
   '/cashflow':      '⇅',
+  '/goals':         '◉',
   '/admin':         '⊙',
+}
+
+const DEFAULT_ORDER = [
+  '/compound', '/retirement', '/statements', '/subscriptions',
+  '/debts', '/budget', '/tax', '/cashflow', '/goals',
+]
+
+function getStoredOrder(): string[] {
+  if (typeof window === 'undefined') return DEFAULT_ORDER
+  try {
+    const raw = localStorage.getItem('nav-order')
+    if (!raw) return DEFAULT_ORDER
+    const stored: string[] = JSON.parse(raw)
+    // merge: keep valid stored items in stored order, append any new items
+    const valid = stored.filter(h => DEFAULT_ORDER.includes(h))
+    const added = DEFAULT_ORDER.filter(h => !stored.includes(h))
+    return [...valid, ...added]
+  } catch { return DEFAULT_ORDER }
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter()
   const pathname = usePathname()
-  const [user, setUser]       = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser]           = useState<User | null>(null)
+  const [loading, setLoading]     = useState(true)
   const [collapsed, setCollapsed] = useState(false)
   const { lang, setLang } = useLang()
   const { theme, toggle } = useTheme()
   const T = t[lang]
+
+  // draggable nav order
+  const [navOrder, setNavOrder] = useState<string[]>(DEFAULT_ORDER)
+  const dragRef = useRef<string | null>(null)
+  const [dragOver, setDragOver] = useState<string | null>(null)
+
+  useEffect(() => {
+    setNavOrder(getStoredOrder())
+  }, [])
+
+  const handleDragStart = (href: string) => { dragRef.current = href }
+  const handleDragOver  = (e: React.DragEvent, href: string) => {
+    e.preventDefault()
+    setDragOver(href)
+  }
+  const handleDrop = (targetHref: string) => {
+    const from = dragRef.current
+    if (!from || from === targetHref) { setDragOver(null); return }
+    const next = [...navOrder]
+    const fi = next.indexOf(from)
+    const ti = next.indexOf(targetHref)
+    next.splice(fi, 1)
+    next.splice(ti, 0, from)
+    setNavOrder(next)
+    localStorage.setItem('nav-order', JSON.stringify(next))
+    dragRef.current = null
+    setDragOver(null)
+  }
+  const handleDragEnd = () => { dragRef.current = null; setDragOver(null) }
 
   const NAV = [
     { href: '/compound',      label: T.nav.compound      },
@@ -41,7 +89,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { href: '/budget',        label: T.nav.budget        },
     { href: '/tax',           label: T.nav.tax           },
     { href: '/cashflow',      label: T.nav.cashflow      },
+    { href: '/goals',         label: T.nav.goals         },
   ]
+
+  const sortedNav = navOrder
+    .map(href => NAV.find(n => n.href === href))
+    .filter(Boolean) as typeof NAV
 
   useEffect(() => {
     const supabase = createClient()
@@ -99,25 +152,46 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </button>
         </div>
 
-        {/* Nav items */}
+        {/* Nav items — draggable */}
         <nav className="flex-1 px-2 py-2 overflow-y-auto space-y-0.5">
-          {NAV.map(({ href, label }) => {
+          {!collapsed && (
+            <p className="text-xs px-3 pb-1 opacity-40" style={{ color: 'var(--muted)', fontSize: 10 }}>
+              拖移可排序
+            </p>
+          )}
+          {sortedNav.map(({ href, label }) => {
             const active = pathname === href
+            const isOver = dragOver === href
             return (
-              <Link
+              <div
                 key={href}
-                href={href}
-                title={collapsed ? label : undefined}
-                className="flex items-center gap-3 px-3 py-2 rounded-xl transition-opacity hover:opacity-70"
+                draggable
+                onDragStart={() => handleDragStart(href)}
+                onDragOver={e => handleDragOver(e, href)}
+                onDrop={() => handleDrop(href)}
+                onDragEnd={handleDragEnd}
                 style={{
-                  backgroundColor: active ? 'var(--bg)' : 'transparent',
-                  color: active ? 'var(--ink)' : 'var(--muted)',
-                  opacity: active ? 1 : undefined,
+                  borderRadius: '0.75rem',
+                  outline: isOver ? `2px solid var(--accent)` : undefined,
+                  transition: 'outline 0.1s',
                 }}
               >
-                <span className="shrink-0 text-base w-4 text-center">{NAV_ICONS[href]}</span>
-                {!collapsed && <span className="text-xs truncate">{label}</span>}
-              </Link>
+                <Link
+                  href={href}
+                  title={collapsed ? label : undefined}
+                  className="flex items-center gap-3 px-3 py-2 rounded-xl transition-opacity hover:opacity-70 select-none"
+                  style={{
+                    backgroundColor: active ? 'var(--bg)' : 'transparent',
+                    color: active ? 'var(--ink)' : 'var(--muted)',
+                  }}
+                >
+                  {!collapsed && (
+                    <span className="shrink-0 text-xs opacity-30 cursor-grab" style={{ color: 'var(--muted)' }}>⠿</span>
+                  )}
+                  <span className="shrink-0 text-base w-4 text-center">{NAV_ICONS[href]}</span>
+                  {!collapsed && <span className="text-xs truncate">{label}</span>}
+                </Link>
+              </div>
             )
           })}
 
@@ -137,9 +211,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           )}
         </nav>
 
-        {/* Bottom: avatar + controls */}
+        {/* Bottom: controls */}
         <div className="shrink-0 px-3 pb-4 space-y-1">
-          {/* Dark mode */}
           <button
             onClick={toggle}
             title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
@@ -150,7 +223,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {!collapsed && <span className="text-xs">{theme === 'dark' ? 'Light' : 'Dark'}</span>}
           </button>
 
-          {/* Lang toggle */}
           <button
             onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
             className="flex items-center gap-3 w-full px-3 py-2 rounded-xl transition-opacity hover:opacity-50"
@@ -162,7 +234,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {!collapsed && <span className="text-xs">{lang === 'zh' ? 'English' : '中文'}</span>}
           </button>
 
-          {/* Sign out */}
           <button
             onClick={handleSignOut}
             className="flex items-center gap-3 w-full px-3 py-2 rounded-xl transition-opacity hover:opacity-50"
@@ -172,7 +243,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {!collapsed && <span className="text-xs">{T.nav.signOut}</span>}
           </button>
 
-          {/* User avatar */}
           {!collapsed && user && (
             <div className="flex items-center gap-2 px-3 pt-2 border-t" style={{ borderColor: 'var(--subtle)' }}>
               {user.user_metadata?.avatar_url

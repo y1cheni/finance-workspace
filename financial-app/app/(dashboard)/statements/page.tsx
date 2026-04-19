@@ -8,6 +8,7 @@ import { downloadCSV } from '@/lib/csv-export'
 import { D } from '@/lib/design'
 import Slider from '@/components/Slider'
 import FormulaPanel from '@/components/FormulaPanel'
+import { readStore } from '@/lib/shared-store'
 
 function fmt(n: number) { return `NT$ ${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
 
@@ -123,7 +124,21 @@ export default function StatementsPage() {
 
   return (
     <div style={{ fontFamily: D.font }}>
-      <h1 className="text-xl font-bold mb-6" style={{ color: D.ink }}>財務報表</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl font-bold" style={{ color: D.ink }}>財務報表</h1>
+        <button
+          onClick={() => {
+            const s = readStore()
+            if (s.totalDebt) setLiabilities(s.totalDebt)
+            if (s.totalMonthlyDebtPayment) setExpenses(e => Math.max(e, s.totalMonthlyDebtPayment!))
+          }}
+          className="text-xs px-3 py-1.5 rounded-xl transition-opacity hover:opacity-70"
+          style={{ backgroundColor: D.surface, color: D.muted }}
+          title="從負債管理頁面載入負債總額"
+        >
+          ↓ 從負債管理同步
+        </button>
+      </div>
 
       <div className="mb-4">
         <ScenarioBar page="statements" currentParams={currentParams} onLoad={handleLoad} onExport={handleExport} />
