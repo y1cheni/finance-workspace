@@ -6,26 +6,38 @@ import { generateStatements } from '@/lib/statement-engine'
 import ScenarioBar from '@/components/ScenarioBar'
 import { downloadCSV } from '@/lib/csv-export'
 import { D } from '@/lib/design'
+import Slider from '@/components/Slider'
+import FormulaPanel from '@/components/FormulaPanel'
 
 function fmt(n: number) { return `NT$ ${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
 
-function Slider({ label, value, min, max, step, format, onChange }: {
-  label: string; value: number; min: number; max: number; step: number
-  format: (v: number) => string; onChange: (v: number) => void
-}) {
-  return (
-    <div className="mb-4">
-      <div className="flex justify-between mb-1">
-        <label className="text-xs" style={{ color: D.muted }}>{label}</label>
-        <span className="text-xs font-semibold" style={{ color: D.ink }}>{format(value)}</span>
-      </div>
-      <input type="range" min={min} max={max} step={step} value={value}
-        onChange={e => onChange(Number(e.target.value))}
-        className="w-full h-1 rounded-full appearance-none cursor-pointer"
-        style={{ accentColor: D.accent }} />
-    </div>
-  )
-}
+const FORMULAS = [
+  {
+    name: '淨資產（Net Worth）',
+    formula: 'NW = 總資產 − 總負債',
+    vars: [
+      { sym: '總資產', desc: '現金 + 投資 + 不動產 + 其他' },
+      { sym: '總負債', desc: '各類貸款餘額合計' },
+    ],
+  },
+  {
+    name: '儲蓄率',
+    formula: '儲蓄率 = (總收入 − 總支出) / 總收入 × 100%',
+  },
+  {
+    name: '負債比（Debt-to-Assets）',
+    formula: 'D/A = 總負債 / 總資產 × 100%',
+    vars: [
+      { sym: 'D/A < 30%', desc: '健康' },
+      { sym: 'D/A 30~50%', desc: '注意' },
+      { sym: 'D/A > 50%', desc: '高風險' },
+    ],
+  },
+  {
+    name: '投資收益（年化）',
+    formula: '投資收益 = 投資組合 × 年化報酬率',
+  },
+]
 
 function NumberInput({ label, value, onChange }: {
   label: string; value: number; onChange: (v: number) => void
@@ -259,6 +271,8 @@ export default function StatementsPage() {
               )}
             </div>
           </div>
+
+          <FormulaPanel formulas={FORMULAS} />
         </div>
       </div>
     </div>

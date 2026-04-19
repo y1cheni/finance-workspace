@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { compoundSeries, cagr } from '@/lib/math-engine'
 import ScenarioBar from '@/components/ScenarioBar'
+import Slider from '@/components/Slider'
+import FormulaPanel from '@/components/FormulaPanel'
 import { downloadCSV } from '@/lib/csv-export'
 import { D } from '@/lib/design'
 
@@ -11,23 +13,29 @@ const RATES = [2, 4, 6, 7, 8, 10, 12, 15]
 
 function fmt(n: number) { return `NT$ ${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
 
-function Slider({ label, value, min, max, step, format, onChange }: {
-  label: string; value: number; min: number; max: number; step: number
-  format: (v: number) => string; onChange: (v: number) => void
-}) {
-  return (
-    <div className="mb-5">
-      <div className="flex justify-between mb-1">
-        <label className="text-xs" style={{ color: D.muted }}>{label}</label>
-        <span className="text-xs font-semibold" style={{ color: D.ink }}>{format(value)}</span>
-      </div>
-      <input type="range" min={min} max={max} step={step} value={value}
-        onChange={e => onChange(Number(e.target.value))}
-        className="w-full h-1 rounded-full appearance-none cursor-pointer"
-        style={{ accentColor: D.accent }} />
-    </div>
-  )
-}
+const FORMULAS = [
+  {
+    name: '複利終值（含定期定額）',
+    formula: 'FV = PV × (1 + r/n)^(n×t) + PMT × [(1 + r/n)^(n×t) − 1] / (r/n)',
+    vars: [
+      { sym: 'FV',  desc: '最終餘額' },
+      { sym: 'PV',  desc: '初始本金' },
+      { sym: 'r',   desc: '年化利率（小數）' },
+      { sym: 'n',   desc: '每年複利次數' },
+      { sym: 't',   desc: '投資年數' },
+      { sym: 'PMT', desc: '每期定投金額' },
+    ],
+  },
+  {
+    name: '實際年化報酬率（CAGR）',
+    formula: 'CAGR = (FV / PV)^(1/t) − 1',
+    vars: [
+      { sym: 'FV', desc: '最終餘額' },
+      { sym: 'PV', desc: '期初資產（本金+定投合計）' },
+      { sym: 't',  desc: '投資年數' },
+    ],
+  },
+]
 
 export default function CompoundPage() {
   const [initial, setInitial] = useState(1_000_000)
@@ -158,6 +166,8 @@ export default function CompoundPage() {
               </tbody>
             </table>
           </div>
+
+          <FormulaPanel formulas={FORMULAS} />
         </div>
       </div>
     </div>
