@@ -9,6 +9,7 @@ import FormulaPanel from '@/components/FormulaPanel'
 import { downloadCSV } from '@/lib/csv-export'
 import { D } from '@/lib/design'
 import { readStore, writeStore } from '@/lib/shared-store'
+import { usePageParams } from '@/lib/use-page-params'
 
 function fmt(n: number) { return `NT$ ${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
 
@@ -79,7 +80,8 @@ export default function RetirementPage() {
     writeStore({ retirementWithdrawal: monthlyExp })
   }, [monthlyExp])
 
-  const currentParams = { currentAge, retirementAge, lifeExp, savings, monthlyExp, annualReturn, inflation, mode }
+  const currentParams = { currentAge, retirementAge, lifeExp, savings, monthlyExp, annualReturn, inflation, mode,
+    salary, selfRate, laborYears, laborReturn, insuredSalary, insuranceYears }
 
   const handleLoad = (params: Record<string, unknown>) => {
     if (typeof params.currentAge    === 'number') setCurrentAge(params.currentAge)
@@ -90,7 +92,14 @@ export default function RetirementPage() {
     if (typeof params.annualReturn  === 'number') setAnnualReturn(params.annualReturn)
     if (typeof params.inflation     === 'number') setInflation(params.inflation)
     if (params.mode === 'fixed' || params.mode === '4pct') setMode(params.mode)
+    if (typeof params.salary         === 'number') setSalary(params.salary)
+    if (typeof params.selfRate       === 'number') setSelfRate(params.selfRate)
+    if (typeof params.laborYears     === 'number') setLaborYears(params.laborYears)
+    if (typeof params.laborReturn    === 'number') setLaborReturn(params.laborReturn)
+    if (typeof params.insuredSalary  === 'number') setInsuredSalary(params.insuredSalary)
+    if (typeof params.insuranceYears === 'number') setInsuranceYears(params.insuranceYears)
   }
+  usePageParams('retirement', currentParams, handleLoad)
 
   const handleExport = () => {
     const headers = ['年齡', '累計投入', '利息成長', '總資產']

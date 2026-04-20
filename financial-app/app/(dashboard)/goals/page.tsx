@@ -5,6 +5,7 @@ import Slider from '@/components/Slider'
 import FormulaPanel from '@/components/FormulaPanel'
 import { D } from '@/lib/design'
 import { readStore } from '@/lib/shared-store'
+import { usePageParams } from '@/lib/use-page-params'
 
 function fmt(n: number) { return `NT$ ${Math.round(n).toLocaleString('zh-TW')}` }
 
@@ -71,6 +72,16 @@ export default function GoalsPage() {
     rate: `${r}%`,
     每月需存: Math.round(calcMonthly(goal, current, years, r)),
   }))
+
+  const currentParams = { goal, current, years, rate, label }
+  const handleLoad = (p: Record<string, unknown>) => {
+    if (typeof p.goal    === 'number') setGoal(p.goal)
+    if (typeof p.current === 'number') setCurrent(p.current)
+    if (typeof p.years   === 'number') setYears(p.years)
+    if (typeof p.rate    === 'number') setRate(p.rate)
+    if (typeof p.label   === 'string') setLabel(p.label)
+  }
+  usePageParams('goals', currentParams, handleLoad)
 
   const syncFromShared = () => {
     const s = readStore()

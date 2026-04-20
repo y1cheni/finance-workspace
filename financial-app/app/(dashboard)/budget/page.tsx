@@ -4,6 +4,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recha
 import ScenarioBar from '@/components/ScenarioBar'
 import { D } from '@/lib/design'
 import { readStore } from '@/lib/shared-store'
+import { usePageParams } from '@/lib/use-page-params'
 
 const LAYERS = [
   {
@@ -72,6 +73,7 @@ export default function BudgetPage() {
     }
     setAmounts(next)
   }
+  usePageParams('budget', currentParams, handleLoad)
   const handleExport = () => {
     const rows = LAYERS.flatMap(l =>
       l.categories.map(c => [l.label, c.label, amounts[c.id]])

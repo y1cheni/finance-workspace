@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { createClient } from '@/lib/supabase'
 import { D } from '@/lib/design'
+import CsvImportModal from '@/components/CsvImportModal'
+import { pick, pickNum } from '@/lib/csv-import'
 
 const INCOME_CATS  = ['薪資', '獎金', '投資收益', '副業', '其他收入']
 const EXPENSE_CATS = ['餐飲', '交通', '居住', '訂閱', '教育', '娛樂', '醫療', '服飾', '雜支']
@@ -29,8 +31,9 @@ function fmt(n: number) { return `NT$ ${Math.round(n).toLocaleString('zh-TW')}` 
 export default function CashflowPage() {
   const [txns, setTxns]           = useState<Txn[]>([])
   const [loading, setLoading]     = useState(true)
-  const [showForm, setShowForm]   = useState(false)
-  const [draft, setDraft]         = useState(EMPTY_DRAFT)
+  const [showForm, setShowForm]     = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [draft, setDraft]           = useState(EMPTY_DRAFT)
   const [viewYear, setViewYear]   = useState(new Date().getFullYear())
   const [viewMonth, setViewMonth] = useState(new Date().getMonth() + 1)
 
@@ -98,11 +101,18 @@ export default function CashflowPage() {
     <div style={{ fontFamily: D.font }}>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold" style={{ color: D.ink }}>收支記錄</h1>
-        <button onClick={() => setShowForm(true)}
-          className="px-4 py-2 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
-          style={{ backgroundColor: D.ink, color: D.bg }}>
-          + 新增
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowImport(true)}
+            className="px-3 py-2 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
+            style={{ backgroundColor: D.surface, color: D.muted, border: `1px solid var(--subtle)` }}>
+            ↑ 匯入 CSV
+          </button>
+          <button onClick={() => setShowForm(true)}
+            className="px-4 py-2 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
+            style={{ backgroundColor: D.ink, color: D.bg }}>
+            + 新增
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 mb-4">
@@ -228,6 +238,37 @@ export default function CashflowPage() {
           </div>
         </div>
       </div>
+
+      {showImport && (
+        <CsvImportModal
+          title="匯入收支記錄"
+          templateCsv="日期,類型,類別,金額,備注\n2025-04-01,expense,餐飲,350,午餐\n2025-04-05,income,薪資,60000,四月薪資\n2025-04-10,expense,訂閱,390,Netflix"
+          templateFilename="收支記錄範本.csv"
+          transform={(row) => {
+            const date    = pick(row, ['日期', 'date', 'Date'])
+            const typeRaw = pick(row, ['類型', 'type', 'Type'])
+            const amount  = pickNum(row, ['金額', 'amount', 'Amount'])
+            if (!date) return { ok: false, error: '缺少日期' }
+            if (amount <= 0) return { ok: false, error: '金額必須大於 0' }
+            // Flexible type mapping
+            const typeMap: Record<string, 'income' | 'expense'> = {
+              income: 'income', expense: 'expense', 收入: 'income', 支出: 'expense',
+            }
+            const type = typeMap[typeRaw] ?? 'expense'
+            const category = pick(row, ['類別', 'category']) || (type === 'income' ? '其他收入' : '雜支')
+            const note     = pick(row, ['備注', 'note', '備註']) || null
+            return { ok: true, data: { date, type, category, amount, note } }
+          }}
+          onConfirm={async (records) => {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return
+            const rows = (records as Omit<Txn, 'id'>[]).map(r => ({ ...r, user_id: user.id }))
+            const { data } = await supabase.from('transactions').insert(rows).select()
+            if (data) setTxns(prev => [...(data as Txn[]), ...prev])
+          }}
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">

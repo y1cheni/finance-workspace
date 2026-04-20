@@ -7,6 +7,7 @@ import Slider from '@/components/Slider'
 import FormulaPanel from '@/components/FormulaPanel'
 import { downloadCSV } from '@/lib/csv-export'
 import { D } from '@/lib/design'
+import { usePageParams } from '@/lib/use-page-params'
 
 const FREQ_MAP: Record<string, number> = { 每月: 12, 每季: 4, 每年: 1, 每日: 365 }
 const RATES = [2, 4, 6, 7, 8, 10, 12, 15]
@@ -52,6 +53,7 @@ export default function CompoundPage() {
     if (typeof p.years   === 'number') setYears(p.years)
     if (typeof p.freq    === 'string') setFreq(p.freq)
   }
+  usePageParams('compound', currentParams, handleLoad)
 
   const compFreq   = FREQ_MAP[freq]
   const annualRate = rate / 100
