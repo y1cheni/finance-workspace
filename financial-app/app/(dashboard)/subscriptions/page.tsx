@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { D } from '@/lib/design'
 import { writeStore } from '@/lib/shared-store'
+import CsvImportModal from '@/components/CsvImportModal'
+import { pick, pickNum } from '@/lib/csv-import'
 
 const USD_RATE = 32.5
 
@@ -44,8 +46,9 @@ export default function SubscriptionsPage() {
   const [loading, setLoading]   = useState(true)
   const [editing, setEditing]   = useState<Sub | null>(null)
   const [draft, setDraft]       = useState<Omit<Sub, 'id'>>(EMPTY)
-  const [showForm, setShowForm] = useState(false)
-  const [rate, setRate]         = useState(USD_RATE)
+  const [showForm, setShowForm]     = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [rate, setRate]             = useState(USD_RATE)
 
   const supabase = createClient()
 
@@ -108,11 +111,18 @@ export default function SubscriptionsPage() {
     <div style={{ fontFamily: D.font }}>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold" style={{ color: D.ink }}>訂閱管理</h1>
-        <button onClick={openNew}
-          className="px-4 py-2 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
-          style={{ backgroundColor: D.ink, color: D.bg }}>
-          + 新增訂閱
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowImport(true)}
+            className="px-3 py-2 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
+            style={{ backgroundColor: D.surface, color: D.muted, border: `1px solid var(--subtle)` }}>
+            ↑ 匯入 CSV
+          </button>
+          <button onClick={openNew}
+            className="px-4 py-2 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
+            style={{ backgroundColor: D.ink, color: D.bg }}>
+            + 新增訂閱
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -194,6 +204,33 @@ export default function SubscriptionsPage() {
           </table>
         </div>
       </div>
+
+      {showImport && (
+        <CsvImportModal
+          title="匯入訂閱資料"
+          templateCsv="名稱,費用,幣別,週期,下次扣款日,類別\nNetflix,390,TWD,monthly,2025-05-01,娛樂\nChatGPT,20,USD,monthly,2025-05-10,工具"
+          templateFilename="訂閱範本.csv"
+          transform={(row, i) => {
+            const name = pick(row, ['名稱', 'name', 'Name'])
+            const cost = pickNum(row, ['費用', 'cost', 'Cost', '金額'])
+            if (!name) return { ok: false, error: '缺少名稱' }
+            if (cost <= 0) return { ok: false, error: '費用必須大於 0' }
+            const currency = pick(row, ['幣別', 'currency']) || 'TWD'
+            const billing_cycle = pick(row, ['週期', 'billing_cycle', 'cycle']) || 'monthly'
+            const next_charge_date = pick(row, ['下次扣款日', 'next_charge_date', 'next_date']) || null
+            const category = pick(row, ['類別', 'category']) || null
+            return { ok: true, data: { name, cost, currency, billing_cycle, next_charge_date, category, active: true } }
+          }}
+          onConfirm={async (records) => {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return
+            const rows = (records as Omit<Sub, 'id'>[]).map(r => ({ ...r, user_id: user.id }))
+            const { data } = await supabase.from('subscriptions').insert(rows).select()
+            if (data) setSubs(prev => [...prev, ...(data as Sub[])])
+          }}
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">

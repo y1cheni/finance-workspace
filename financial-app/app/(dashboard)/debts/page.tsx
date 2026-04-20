@@ -4,6 +4,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { createClient } from '@/lib/supabase'
 import { D } from '@/lib/design'
 import { writeStore } from '@/lib/shared-store'
+import CsvImportModal from '@/components/CsvImportModal'
+import { pick, pickNum } from '@/lib/csv-import'
 
 interface Debt {
   id: string
@@ -65,8 +67,9 @@ function debtMonths(d: Debt): number {
 export default function DebtsPage() {
   const [debts, setDebts]       = useState<Debt[]>([])
   const [loading, setLoading]   = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [editing, setEditing]   = useState<Debt | null>(null)
+  const [showForm, setShowForm]     = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [editing, setEditing]       = useState<Debt | null>(null)
   const [draft, setDraft]       = useState<Omit<Debt, 'id'>>(EMPTY)
   const [income, setIncome]     = useState(60000)
   const [extra, setExtra]       = useState(0)
@@ -135,11 +138,18 @@ export default function DebtsPage() {
     <div style={{ fontFamily: D.font }}>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold" style={{ color: D.ink }}>負債管理</h1>
-        <button onClick={openNew}
-          className="px-4 py-2 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
-          style={{ backgroundColor: D.ink, color: D.bg }}>
-          + 新增負債
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowImport(true)}
+            className="px-3 py-2 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
+            style={{ backgroundColor: D.surface, color: D.muted, border: `1px solid var(--subtle)` }}>
+            ↑ 匯入 CSV
+          </button>
+          <button onClick={openNew}
+            className="px-4 py-2 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
+            style={{ backgroundColor: D.ink, color: D.bg }}>
+            + 新增負債
+          </button>
+        </div>
       </div>
 
       {/* 摘要 */}
@@ -319,6 +329,34 @@ export default function DebtsPage() {
           </div>
         )}
       </div>
+
+      {showImport && (
+        <CsvImportModal
+          title="匯入負債資料"
+          templateCsv="名稱,類型,原始金額,剩餘金額,每月還款,年利率,還清日\n房屋貸款,房貸,8000000,6500000,35000,2.06,2040-01-01\n信用貸款,信貸,300000,200000,12000,8.5,"
+          templateFilename="負債範本.csv"
+          transform={(row) => {
+            const name = pick(row, ['名稱', 'name'])
+            const remaining = pickNum(row, ['剩餘金額', 'remaining', '餘額'])
+            if (!name) return { ok: false, error: '缺少名稱' }
+            if (remaining <= 0) return { ok: false, error: '剩餘金額必須大於 0' }
+            const debt_type     = pick(row, ['類型', 'debt_type', 'type']) || '其他'
+            const original_amount = pickNum(row, ['原始金額', 'original_amount', '原始']) || remaining
+            const monthly_payment = pickNum(row, ['每月還款', 'monthly_payment', '月付'])
+            const annual_rate     = pickNum(row, ['年利率', 'annual_rate', '利率'])
+            const end_date        = pick(row, ['還清日', 'end_date']) || null
+            return { ok: true, data: { name, debt_type, original_amount, remaining, monthly_payment, annual_rate, end_date } }
+          }}
+          onConfirm={async (records) => {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return
+            const rows = (records as Omit<Debt, 'id'>[]).map(r => ({ ...r, user_id: user.id }))
+            const { data } = await supabase.from('debts').insert(rows).select()
+            if (data) setDebts(prev => [...prev, ...(data as Debt[])])
+          }}
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       {/* 表單 Modal */}
       {showForm && (

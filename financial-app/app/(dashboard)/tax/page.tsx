@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { D } from '@/lib/design'
 import FormulaPanel from '@/components/FormulaPanel'
 import { readStore } from '@/lib/shared-store'
+import { usePageParams } from '@/lib/use-page-params'
 
 const TAX_FORMULAS = [
   {
@@ -90,6 +91,20 @@ export default function TaxPage() {
       ? `海外所得 ${fmt(overseas)} 超過免稅門檻，需合併計算最低稅負`
       : `海外所得 ${fmt(overseas)}，尚未達 ${fmt(OVERSEAS_THRESHOLD)} 門檻，本年免稅`
     : null
+
+  const currentParams = { salary, overseas, otherInc, dependents, useItemized, itemized, disability, under6, rent }
+  const handleLoad = (p: Record<string, unknown>) => {
+    if (typeof p.salary      === 'number')  setSalary(p.salary)
+    if (typeof p.overseas    === 'number')  setOverseas(p.overseas)
+    if (typeof p.otherInc    === 'number')  setOtherInc(p.otherInc)
+    if (typeof p.dependents  === 'number')  setDependents(p.dependents)
+    if (typeof p.itemized    === 'number')  setItemizedAmt(p.itemized)
+    if (typeof p.disability  === 'boolean') setDisability(p.disability)
+    if (typeof p.under6      === 'number')  setUnder6(p.under6)
+    if (typeof p.rent        === 'number')  setRent(p.rent)
+    if (typeof p.useItemized === 'boolean') setItemized(p.useItemized)
+  }
+  usePageParams('tax', currentParams, handleLoad)
 
   const inputClass = "w-full rounded-xl px-3 py-2 text-xs focus:outline-none"
   const inputStyle = { backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }

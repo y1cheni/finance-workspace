@@ -9,6 +9,7 @@ import { D } from '@/lib/design'
 import Slider from '@/components/Slider'
 import FormulaPanel from '@/components/FormulaPanel'
 import { readStore } from '@/lib/shared-store'
+import { usePageParams } from '@/lib/use-page-params'
 
 function fmt(n: number) { return `NT$ ${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
 
@@ -87,6 +88,7 @@ export default function StatementsPage() {
     if (typeof params.paydown     === 'number') setPaydown(params.paydown)
     if (typeof params.projYears   === 'number') setProjYears(params.projYears)
   }
+  usePageParams('statements', currentParams, handleLoad)
 
   const handleExport = () => {
     if (activeTab === 'bs') {
