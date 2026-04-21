@@ -4,7 +4,6 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { createClient } from '@/lib/supabase'
 import { D } from '@/lib/design'
 import CsvImportModal from '@/components/CsvImportModal'
-import { pick, pickNum } from '@/lib/csv-import'
 
 const INCOME_CATS  = ['薪資', '獎金', '投資收益', '副業', '其他收入']
 const EXPENSE_CATS = ['餐飲', '交通', '居住', '訂閱', '教育', '娛樂', '醫療', '服飾', '雜支']
@@ -242,27 +241,38 @@ export default function CashflowPage() {
       {showImport && (
         <CsvImportModal
           title="匯入收支記錄"
-          templateCsv="日期,類型,類別,金額,備注\n2025-04-01,expense,餐飲,350,午餐\n2025-04-05,income,薪資,60000,四月薪資\n2025-04-10,expense,訂閱,390,Netflix"
+          templateCsv={[
+            '日期,類型,類別,金額,備注',
+            '2026-04-01,expense,餐飲,350,午餐',
+            '2026-04-05,income,薪資,60000,四月薪資',
+          ].join('\n')}
           templateFilename="收支記錄範本.csv"
-          transform={(row) => {
-            const date    = pick(row, ['日期', 'date', 'Date'])
-            const typeRaw = pick(row, ['類型', 'type', 'Type'])
-            const amount  = pickNum(row, ['金額', 'amount', 'Amount'])
-            if (!date) return { ok: false, error: '缺少日期' }
-            if (amount <= 0) return { ok: false, error: '金額必須大於 0' }
-            // Flexible type mapping
-            const typeMap: Record<string, 'income' | 'expense'> = {
-              income: 'income', expense: 'expense', 收入: 'income', 支出: 'expense',
-            }
-            const type = typeMap[typeRaw] ?? 'expense'
-            const category = pick(row, ['類別', 'category']) || (type === 'income' ? '其他收入' : '雜支')
-            const note     = pick(row, ['備注', 'note', '備註']) || null
-            return { ok: true, data: { date, type, category, amount, note } }
+          fields={[
+            { key: 'date',     label: '日期', required: true,  type: 'date'   },
+            { key: 'type',     label: '類型', type: 'text', defaultValue: 'expense',
+              hint: 'income/expense 或 收入/支出' },
+            { key: 'category', label: '類別', type: 'text', defaultValue: '雜支' },
+            { key: 'amount',   label: '金額', required: true,  type: 'number' },
+            { key: 'note',     label: '備注', type: 'text' },
+          ]}
+          validate={(rec) => {
+            if ((rec.amount as number) <= 0) return '金額必須大於 0'
+            return null
           }}
           onConfirm={async (records) => {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
-            const rows = (records as Omit<Txn, 'id'>[]).map(r => ({ ...r, user_id: user.id }))
+            const TYPE_MAP: Record<string, string> = {
+              income: 'income', expense: 'expense', 收入: 'income', 支出: 'expense',
+            }
+            const rows = records.map(r => ({
+              date:     (r.date as string).split(' ')[0],
+              type:     TYPE_MAP[r.type as string] ?? 'expense',
+              category: (r.category as string) || '雜支',
+              amount:   r.amount as number,
+              note:     (r.note as string) || null,
+              user_id:  user.id,
+            }))
             const { data } = await supabase.from('transactions').insert(rows).select()
             if (data) setTxns(prev => [...(data as Txn[]), ...prev])
           }}

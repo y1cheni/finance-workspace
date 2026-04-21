@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase'
 import { D } from '@/lib/design'
 import { writeStore } from '@/lib/shared-store'
 import CsvImportModal from '@/components/CsvImportModal'
-import { pick, pickNum } from '@/lib/csv-import'
 
 interface Debt {
   id: string
@@ -252,6 +251,72 @@ export default function DebtsPage() {
         {/* 還款策略 */}
         {debts.length > 0 && (
           <div className="lg:w-80 shrink-0 space-y-4">
+
+            {/* ── APR / 費用分析 ── */}
+            <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+              <p className="text-xs font-medium mb-1" style={{ color: D.ink }}>費用分析</p>
+              <p className="text-xs mb-4" style={{ color: D.muted }}>
+                契約總額 − 實拿 = 利息＋手續費；APR 越高優先還
+              </p>
+              <div className="space-y-3">
+                {[...debts]
+                  .filter(d => d.annual_rate > 0 || d.original_amount > d.remaining)
+                  .sort((a, b) => b.annual_rate - a.annual_rate)
+                  .map(d => {
+                    const totalCost   = d.original_amount > d.remaining
+                      ? d.original_amount - d.remaining
+                      : (() => {
+                          const m = debtMonths(d)
+                          return m > 0 ? d.monthly_payment * m - d.remaining : 0
+                        })()
+                    const costRatio = d.original_amount > 0 ? totalCost / d.original_amount : 0
+                    const maxAPR    = Math.max(...debts.map(x => x.annual_rate), 1)
+                    return (
+                      <div key={d.id}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="font-medium truncate max-w-[120px]" style={{ color: D.ink }}>{d.name}</span>
+                          <span style={{ color: d.annual_rate > 10 ? D.danger : D.muted }}>
+                            APR {d.annual_rate.toFixed(2)}%
+                          </span>
+                        </div>
+                        {/* APR bar */}
+                        <div className="h-1 rounded-full mb-1" style={{ backgroundColor: D.bg }}>
+                          <div className="h-1 rounded-full" style={{
+                            width: `${(d.annual_rate / maxAPR) * 100}%`,
+                            backgroundColor: d.annual_rate > 10 ? D.danger : D.accent,
+                          }} />
+                        </div>
+                        <div className="flex justify-between text-xs" style={{ color: D.muted }}>
+                          <span>
+                            利息＋費 {fmt(Math.round(totalCost))}
+                          </span>
+                          <span style={{ color: costRatio > 0.3 ? D.danger : D.muted }}>
+                            佔 {(costRatio * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+              </div>
+              {/* Total interest */}
+              {(() => {
+                const totalInterest = debts.reduce((s, d) => {
+                  if (d.original_amount > d.remaining) return s + (d.original_amount - d.remaining)
+                  const m = debtMonths(d)
+                  return s + (m > 0 ? d.monthly_payment * m - d.remaining : 0)
+                }, 0)
+                return (
+                  <div className="mt-4 pt-3 flex justify-between text-xs"
+                    style={{ borderTop: `1px solid var(--subtle)` }}>
+                    <span style={{ color: D.muted }}>全部利息＋費用合計</span>
+                    <span className="font-semibold" style={{ color: D.danger }}>
+                      {fmt(Math.round(totalInterest))}
+                    </span>
+                  </div>
+                )
+              })()}
+            </div>
+
             <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
               <p className="text-xs mb-4" style={{ color: D.muted }}>還款策略比較</p>
               <div className="mb-4">
@@ -332,25 +397,60 @@ export default function DebtsPage() {
 
       {showImport && (
         <CsvImportModal
-          title="匯入負債資料"
-          templateCsv="名稱,類型,原始金額,剩餘金額,每月還款,年利率,還清日\n房屋貸款,房貸,8000000,6500000,35000,2.06,2040-01-01\n信用貸款,信貸,300000,200000,12000,8.5,"
-          templateFilename="負債範本.csv"
-          transform={(row) => {
-            const name = pick(row, ['名稱', 'name'])
-            const remaining = pickNum(row, ['剩餘金額', 'remaining', '餘額'])
-            if (!name) return { ok: false, error: '缺少名稱' }
-            if (remaining <= 0) return { ok: false, error: '剩餘金額必須大於 0' }
-            const debt_type     = pick(row, ['類型', 'debt_type', 'type']) || '其他'
-            const original_amount = pickNum(row, ['原始金額', 'original_amount', '原始']) || remaining
-            const monthly_payment = pickNum(row, ['每月還款', 'monthly_payment', '月付'])
-            const annual_rate     = pickNum(row, ['年利率', 'annual_rate', '利率'])
-            const end_date        = pick(row, ['還清日', 'end_date']) || null
-            return { ok: true, data: { name, debt_type, original_amount, remaining, monthly_payment, annual_rate, end_date } }
+          title="匯入負債資料（支援 M-flow 格式）"
+          templateCsv={[
+            '負債名稱,type,契約總負債額,實拿,月付,APR年化成本,終止',
+            '國泰信貸,信貸,372780,291000,6213,5.62%,2901',
+            'linebank,信貸,127680,98697,2128,5.87%,3003',
+            '房屋貸款,房貸,8000000,6500000,35000,2.06%,3506',
+          ].join('\n')}
+          templateFilename="負債範本_mflow.csv"
+          fields={[
+            { key: 'name',             label: '負債名稱', required: true, type: 'text' },
+            { key: 'debt_type',        label: '類型',     type: 'text', defaultValue: '其他',
+              hint: '信貸/房貸/車貸/信用卡' },
+            { key: 'original_amount',  label: '契約總負債額', type: 'number',
+              hint: '含利息費用的合約總額' },
+            { key: 'remaining',        label: '實拿/剩餘', required: true, type: 'number',
+              hint: '實際收到金額或剩餘餘額' },
+            { key: 'monthly_payment',  label: '月付',     type: 'number' },
+            { key: 'annual_rate',      label: 'APR年化',  type: 'number',
+              hint: '自動去除 % 符號' },
+            { key: 'end_date',         label: '終止日',   type: 'text',
+              hint: 'YYMM 如 2608 或 YYYY-MM-DD' },
+          ]}
+          validate={(rec) => {
+            const remaining = rec.remaining as number | null
+            if (!remaining || remaining <= 0) return '實拿/剩餘必須大於 0'
+            return null
           }}
           onConfirm={async (records) => {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
-            const rows = (records as Omit<Debt, 'id'>[]).map(r => ({ ...r, user_id: user.id }))
+            const rows = records.map(r => {
+              // Parse YYMM format "2608" → "2026-08-01"
+              const edRaw = r.end_date as string | null
+              let end_date: string | null = null
+              if (edRaw) {
+                if (/^\d{4}$/.test(edRaw)) {
+                  end_date = `20${edRaw.slice(0, 2)}-${edRaw.slice(2)}-01`
+                } else if (/^\d{4}-\d{2}/.test(edRaw)) {
+                  end_date = edRaw
+                }
+              }
+              const remaining = r.remaining as number
+              const original_amount = (r.original_amount as number) || remaining
+              return {
+                name:             r.name as string,
+                debt_type:        (r.debt_type as string) || '其他',
+                original_amount,
+                remaining,
+                monthly_payment:  (r.monthly_payment as number) || 0,
+                annual_rate:      (r.annual_rate as number) || 0,
+                end_date,
+                user_id:          user.id,
+              }
+            })
             const { data } = await supabase.from('debts').insert(rows).select()
             if (data) setDebts(prev => [...prev, ...(data as Debt[])])
           }}
