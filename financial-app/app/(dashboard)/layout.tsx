@@ -30,8 +30,8 @@ const NAV_ICONS: Record<string, string> = {
 interface NavGroup { id: string; label: string; hrefs: string[] }
 
 const DEFAULT_GROUPS: NavGroup[] = [
-  { id: 'calc',     label: '計算工具', hrefs: ['/compound', '/retirement', '/budget', '/tax', '/goals'] },
-  { id: 'assets',   label: '資產負債', hrefs: ['/statements', '/portfolio', '/debts', '/housing'] },
+  { id: 'calc',     label: '計算工具', hrefs: ['/compound', '/retirement', '/budget', '/tax', '/goals', '/housing'] },
+  { id: 'assets',   label: '資產負債', hrefs: ['/statements', '/portfolio', '/debts'] },
   { id: 'daily',    label: '日常管理', hrefs: ['/cashflow', '/subscriptions'] },
   { id: 'advanced', label: '進階',     hrefs: ['/formula'] },
 ]

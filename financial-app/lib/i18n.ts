@@ -6,7 +6,7 @@ export const t = {
     nav: {
       signIn: '登入',
       getStarted: '免費開始',
-      compound: '複利計算器',
+      compound: '複利計算',
       retirement: '退休規劃',
       statements: '財務報表',
       subscriptions: '訂閱管理',
@@ -17,7 +17,7 @@ export const t = {
       goals: '目標儲蓄',
       portfolio: '投資組合',
       formula: '自定義公式',
-      housing: '房貸 & 養育費',
+      housing: '房貸養育',
       admin: '後台',
       signOut: '登出',
     },
