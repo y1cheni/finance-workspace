@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
@@ -21,26 +21,18 @@ const NAV_ICONS: Record<string, string> = {
   '/cashflow':      '⇅',
   '/goals':         '◉',
   '/portfolio':     '⬡',
+  '/housing':       '⌂',
+  '/formula':       'ƒ',
   '/admin':         '⊙',
 }
 
-const DEFAULT_ORDER = [
-  '/compound', '/retirement', '/portfolio', '/statements', '/subscriptions',
-  '/debts', '/budget', '/tax', '/cashflow', '/goals',
+/* Grouped nav — each group has a label and list of hrefs */
+const NAV_GROUPS = [
+  { label: '計算工具', hrefs: ['/compound', '/retirement', '/budget', '/tax', '/goals'] },
+  { label: '資產負債', hrefs: ['/statements', '/portfolio', '/debts', '/housing'] },
+  { label: '日常管理', hrefs: ['/cashflow', '/subscriptions'] },
+  { label: '進階',     hrefs: ['/formula'] },
 ]
-
-function getStoredOrder(): string[] {
-  if (typeof window === 'undefined') return DEFAULT_ORDER
-  try {
-    const raw = localStorage.getItem('nav-order')
-    if (!raw) return DEFAULT_ORDER
-    const stored: string[] = JSON.parse(raw)
-    // merge: keep valid stored items in stored order, append any new items
-    const valid = stored.filter(h => DEFAULT_ORDER.includes(h))
-    const added = DEFAULT_ORDER.filter(h => !stored.includes(h))
-    return [...valid, ...added]
-  } catch { return DEFAULT_ORDER }
-}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter()
@@ -48,55 +40,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [user, setUser]           = useState<User | null>(null)
   const [loading, setLoading]     = useState(true)
   const [collapsed, setCollapsed] = useState(false)
+  const [dragOver, setDragOver]   = useState<string | null>(null)
   const { lang, setLang } = useLang()
   const { theme, toggle } = useTheme()
   const T = t[lang]
 
-  // draggable nav order
-  const [navOrder, setNavOrder] = useState<string[]>(DEFAULT_ORDER)
-  const dragRef = useRef<string | null>(null)
-  const [dragOver, setDragOver] = useState<string | null>(null)
+  const handleDragOver = (e: React.DragEvent, href: string) => { e.preventDefault(); setDragOver(href) }
+  const handleDragEnd  = () => setDragOver(null)
 
-  useEffect(() => {
-    setNavOrder(getStoredOrder())
-  }, [])
-
-  const handleDragStart = (href: string) => { dragRef.current = href }
-  const handleDragOver  = (e: React.DragEvent, href: string) => {
-    e.preventDefault()
-    setDragOver(href)
+  const NAV: Record<string, string> = {
+    '/compound':      T.nav.compound,
+    '/retirement':    T.nav.retirement,
+    '/statements':    T.nav.statements,
+    '/subscriptions': T.nav.subscriptions,
+    '/debts':         T.nav.debts,
+    '/budget':        T.nav.budget,
+    '/tax':           T.nav.tax,
+    '/cashflow':      T.nav.cashflow,
+    '/goals':         T.nav.goals,
+    '/portfolio':     T.nav.portfolio,
+    '/housing':       T.nav.housing,
+    '/formula':       T.nav.formula,
   }
-  const handleDrop = (targetHref: string) => {
-    const from = dragRef.current
-    if (!from || from === targetHref) { setDragOver(null); return }
-    const next = [...navOrder]
-    const fi = next.indexOf(from)
-    const ti = next.indexOf(targetHref)
-    next.splice(fi, 1)
-    next.splice(ti, 0, from)
-    setNavOrder(next)
-    localStorage.setItem('nav-order', JSON.stringify(next))
-    dragRef.current = null
-    setDragOver(null)
-  }
-  const handleDragEnd = () => { dragRef.current = null; setDragOver(null) }
-
-  const NAV = [
-    { href: '/compound',      label: T.nav.compound      },
-    { href: '/retirement',    label: T.nav.retirement    },
-    { href: '/statements',    label: T.nav.statements    },
-    { href: '/subscriptions', label: T.nav.subscriptions },
-    { href: '/debts',         label: T.nav.debts         },
-    { href: '/budget',        label: T.nav.budget        },
-    { href: '/tax',           label: T.nav.tax           },
-    { href: '/cashflow',      label: T.nav.cashflow      },
-    { href: '/goals',         label: T.nav.goals         },
-    { href: '/portfolio',     label: T.nav.portfolio     },
-  ]
-
-  const sortedNav = navOrder
-    .map(href => NAV.find(n => n.href === href))
-    .filter(Boolean) as typeof NAV
 
   useEffect(() => {
     const supabase = createClient()
@@ -154,62 +119,69 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </button>
         </div>
 
-        {/* Nav items — draggable */}
-        <nav className="flex-1 px-2 py-2 overflow-y-auto space-y-0.5">
-          {!collapsed && (
-            <p className="text-xs px-3 pb-1 opacity-40" style={{ color: 'var(--muted)', fontSize: 10 }}>
-              拖移可排序
-            </p>
-          )}
-          {sortedNav.map(({ href, label }) => {
-            const active = pathname === href
-            const isOver = dragOver === href
-            return (
-              <div
-                key={href}
-                draggable
-                onDragStart={() => handleDragStart(href)}
-                onDragOver={e => handleDragOver(e, href)}
-                onDrop={() => handleDrop(href)}
-                onDragEnd={handleDragEnd}
-                style={{
-                  borderRadius: '0.75rem',
-                  outline: isOver ? `2px solid var(--accent)` : undefined,
-                  transition: 'outline 0.1s',
-                }}
-              >
-                <Link
-                  href={href}
-                  title={collapsed ? label : undefined}
-                  className="flex items-center gap-3 px-3 py-2 rounded-xl transition-opacity hover:opacity-70 select-none"
-                  style={{
-                    backgroundColor: active ? 'var(--bg)' : 'transparent',
-                    color: active ? 'var(--ink)' : 'var(--muted)',
-                  }}
-                >
-                  {!collapsed && (
-                    <span className="shrink-0 text-xs opacity-30 cursor-grab" style={{ color: 'var(--muted)' }}>⠿</span>
-                  )}
-                  <span className="shrink-0 text-base w-4 text-center">{NAV_ICONS[href]}</span>
-                  {!collapsed && <span className="text-xs truncate">{label}</span>}
-                </Link>
+        {/* Nav items — grouped */}
+        <nav className="flex-1 px-2 py-2 overflow-y-auto">
+          {NAV_GROUPS.map((group, gi) => (
+            <div key={group.label} className={gi > 0 ? 'mt-3' : ''}>
+              {!collapsed && (
+                <p className="text-xs px-3 pb-1" style={{ color: 'var(--muted)', fontSize: 10, opacity: 0.4 }}>
+                  {group.label}
+                </p>
+              )}
+              <div className="space-y-0.5">
+                {group.hrefs.map(href => {
+                  const label = NAV[href]
+                  if (!label) return null
+                  const active = pathname === href
+                  const isOver = dragOver === href
+                  return (
+                    <div
+                      key={href}
+                      onDragOver={e => handleDragOver(e, href)}
+                      onDragEnd={handleDragEnd}
+                      style={{
+                        borderRadius: '0.75rem',
+                        outline: isOver ? `2px solid var(--accent)` : undefined,
+                        transition: 'outline 0.1s',
+                      }}
+                    >
+                      <Link
+                        href={href}
+                        title={collapsed ? label : undefined}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl transition-opacity hover:opacity-70 select-none"
+                        style={{
+                          backgroundColor: active ? 'var(--bg)' : 'transparent',
+                          color: active ? 'var(--ink)' : 'var(--muted)',
+                        }}
+                      >
+                        <span className="shrink-0 text-base w-4 text-center">{NAV_ICONS[href]}</span>
+                        {!collapsed && <span className="text-xs truncate">{label}</span>}
+                      </Link>
+                    </div>
+                  )
+                })}
               </div>
-            )
-          })}
+            </div>
+          ))}
 
           {user?.email === ADMIN_EMAIL && (
-            <Link
-              href="/admin"
-              title={collapsed ? T.nav.admin : undefined}
-              className="flex items-center gap-3 px-3 py-2 rounded-xl transition-opacity hover:opacity-70"
-              style={{
-                backgroundColor: pathname === '/admin' ? 'var(--bg)' : 'transparent',
-                color: pathname === '/admin' ? 'var(--ink)' : 'var(--muted)',
-              }}
-            >
-              <span className="shrink-0 text-base w-4 text-center">{NAV_ICONS['/admin']}</span>
-              {!collapsed && <span className="text-xs">{T.nav.admin}</span>}
-            </Link>
+            <div className="mt-3">
+              {!collapsed && (
+                <p className="text-xs px-3 pb-1" style={{ color: 'var(--muted)', fontSize: 10, opacity: 0.4 }}>系統</p>
+              )}
+              <Link
+                href="/admin"
+                title={collapsed ? T.nav.admin : undefined}
+                className="flex items-center gap-3 px-3 py-2 rounded-xl transition-opacity hover:opacity-70"
+                style={{
+                  backgroundColor: pathname === '/admin' ? 'var(--bg)' : 'transparent',
+                  color: pathname === '/admin' ? 'var(--ink)' : 'var(--muted)',
+                }}
+              >
+                <span className="shrink-0 text-base w-4 text-center">{NAV_ICONS['/admin']}</span>
+                {!collapsed && <span className="text-xs">{T.nav.admin}</span>}
+              </Link>
+            </div>
           )}
         </nav>
 
