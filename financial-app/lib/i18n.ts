@@ -23,7 +23,7 @@ export const t = {
     },
     landing: {
       badge: '個人財務規劃工具',
-      headline: '不再靠感覺管錢\n讓每個決定都有數字撐腰',
+      headline: '財務具體，\n不再模糊',
       sub: '把散落在記憶和試算表裡的財務問題，整合成一份看得懂的行動計畫。',
       cta: '使用 Google 帳號免費開始',
       ctaNote: '免費 · 不需信用卡 · 資料不外洩',
