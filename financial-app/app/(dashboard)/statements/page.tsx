@@ -8,82 +8,79 @@ import { downloadCSV } from '@/lib/csv-export'
 import { D } from '@/lib/design'
 import Slider from '@/components/Slider'
 import FormulaPanel from '@/components/FormulaPanel'
-import { readStore } from '@/lib/shared-store'
 import { usePageParams } from '@/lib/use-page-params'
 import { createClient } from '@/lib/supabase'
 
-interface Snapshot {
-  date: string        // YYYY-MM-DD
-  netWorth: number
-  totalAssets: number
-  totalLiabilities: number
+/* ─── Snapshot helpers ─── */
+interface Snapshot { date: string; netWorth: number; totalAssets: number; totalLiabilities: number }
+
+function loadSnapshots(uid: string): Snapshot[] {
+  try { const r = localStorage.getItem(`ftp-snapshots-${uid}`); return r ? JSON.parse(r) : [] } catch { return [] }
+}
+function saveSnapshots(uid: string, s: Snapshot[]) {
+  localStorage.setItem(`ftp-snapshots-${uid}`, JSON.stringify(s))
 }
 
-function loadSnapshots(userId: string): Snapshot[] {
-  try {
-    const raw = localStorage.getItem(`ftp-snapshots-${userId}`)
-    return raw ? JSON.parse(raw) : []
-  } catch { return [] }
-}
+const RANGE_DAYS: Record<string, number | null> = { '30天': 30, '6月': 180, '1年': 365, '全部': null }
 
-function saveSnapshots(userId: string, snaps: Snapshot[]) {
-  localStorage.setItem(`ftp-snapshots-${userId}`, JSON.stringify(snaps))
-}
+/* ─── Asset Items ─── */
+interface AssetItem { id: string; category: string; name: string; amount: number; note: string | null; updated_at: string }
 
-const RANGE_DAYS: Record<string, number | null> = {
-  '30天': 30, '6月': 180, '1年': 365, '全部': null,
-}
-
-function fmt(n: number) { return `NT$ ${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
-
-const FORMULAS = [
-  {
-    name: '淨資產（Net Worth）',
-    formula: 'NW = 總資產 − 總負債',
-    vars: [
-      { sym: '總資產', desc: '現金 + 投資 + 不動產 + 其他' },
-      { sym: '總負債', desc: '各類貸款餘額合計' },
-    ],
-  },
-  {
-    name: '儲蓄率',
-    formula: '儲蓄率 = (總收入 − 總支出) / 總收入 × 100%',
-  },
-  {
-    name: '負債比（Debt-to-Assets）',
-    formula: 'D/A = 總負債 / 總資產 × 100%',
-    vars: [
-      { sym: 'D/A < 30%', desc: '健康' },
-      { sym: 'D/A 30~50%', desc: '注意' },
-      { sym: 'D/A > 50%', desc: '高風險' },
-    ],
-  },
-  {
-    name: '投資收益（年化）',
-    formula: '投資收益 = 投資組合 × 年化報酬率',
-  },
+const CATEGORIES = [
+  { key: '流動資金', label: '流動資金', hint: '現金、存款、電子支付', color: '#22c55e' },
+  { key: '投資',    label: '投資',    hint: '股票、基金、加密貨幣', color: '#818cf8' },
+  { key: '固定資產', label: '固定資產', hint: '不動產、車輛、設備',  color: '#f59e0b' },
+  { key: '應收款',  label: '應收款',  hint: '借出款項、預付款',    color: '#06b6d4' },
+  { key: '負債',    label: '負債',    hint: '貸款、信用卡餘額',    color: '#ef4444' },
 ]
 
-function NumberInput({ label, value, onChange }: {
-  label: string; value: number; onChange: (v: number) => void
-}) {
-  return (
-    <div className="mb-3">
-      <label className="text-xs block mb-1" style={{ color: D.muted }}>{label}</label>
-      <input type="number" value={value} step={10000}
-        onChange={e => onChange(Number(e.target.value))}
-        className="w-full rounded-xl px-3 py-2 text-xs focus:outline-none"
-        style={{ backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }} />
-    </div>
-  )
+const SETUP_SQL = `create table asset_items (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  category text not null,
+  name text not null,
+  amount numeric not null default 0,
+  note text,
+  updated_at timestamptz default now()
+);
+alter table asset_items enable row level security;
+create policy "Users manage own asset items"
+  on asset_items for all using (auth.uid() = user_id);`
+
+/* ─── Helpers ─── */
+function fmt(n: number) { return `NT$\u00a0${Math.abs(n).toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
+function fmtShort(n: number) {
+  const abs = Math.abs(n)
+  if (abs >= 1_000_000) return `${(abs / 10_000).toFixed(0)}萬`
+  if (abs >= 10_000)    return `${(abs / 10_000).toFixed(1)}萬`
+  return abs.toLocaleString('zh-TW')
 }
 
+const FORMULAS = [
+  { name: '淨資產（Net Worth）', formula: 'NW = 總資產 − 總負債',
+    vars: [{ sym: '總資產', desc: '流動資金 + 投資 + 固定資產 + 應收款' }, { sym: '總負債', desc: '各類貸款餘額合計' }] },
+  { name: '儲蓄率', formula: '儲蓄率 = (總收入 − 總支出) / 總收入 × 100%' },
+  { name: '負債比（D/A）', formula: 'D/A = 總負債 / 總資產 × 100%',
+    vars: [{ sym: 'D/A < 30%', desc: '健康' }, { sym: 'D/A 30~50%', desc: '注意' }, { sym: 'D/A > 50%', desc: '高風險' }] },
+  { name: '投資收益（年化）', formula: '投資收益 = 投資 × 年化報酬率' },
+]
+
+/* ─── Main Page ─── */
 export default function StatementsPage() {
-  const [cash,        setCash]        = useState(500_000)
-  const [investments, setInvestments] = useState(1_000_000)
-  const [realEstate,  setRealEstate]  = useState(3_000_000)
-  const [otherAssets, setOtherAssets] = useState(0)
-  const [liabilities, setLiabilities] = useState(2_000_000)
+  /* Asset items */
+  const [items,       setItems]       = useState<AssetItem[]>([])
+  const [tableReady,  setTableReady]  = useState<boolean | null>(null)
+  const [modalOpen,   setModalOpen]   = useState(false)
+  const [editId,      setEditId]      = useState<string | null>(null)
+  const [form,        setForm]        = useState({ name: '', amount: '', note: '', category: '流動資金' })
+  const [saving,      setSaving]      = useState(false)
+
+  /* Snapshots */
+  const [snapshots,   setSnapshots]   = useState<Snapshot[]>([])
+  const [snapRange,   setSnapRange]   = useState('全部')
+  const [snapSaved,   setSnapSaved]   = useState(false)
+
+  /* Projection params */
   const [income,      setIncome]      = useState(80_000)
   const [expenses,    setExpenses]    = useState(50_000)
   const [invRet,      setInvRet]      = useState(7)
@@ -94,85 +91,109 @@ export default function StatementsPage() {
   const [projYears,   setProjYears]   = useState(20)
   const [activeTab,   setActiveTab]   = useState<'bs' | 'pl'>('bs')
 
-  // Snapshot trend state
-  const [snapshots,   setSnapshots]   = useState<Snapshot[]>([])
-  const [snapRange,   setSnapRange]   = useState<string>('全部')
-  const [snapSaved,   setSnapSaved]   = useState(false)
   const userIdRef = useRef<string | null>(null)
 
+  /* ── Load data ── */
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        userIdRef.current = data.user.id
-        setSnapshots(loadSnapshots(data.user.id))
-      }
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return
+      userIdRef.current = data.user.id
+      setSnapshots(loadSnapshots(data.user.id))
+
+      const { data: rows, error } = await supabase
+        .from('asset_items').select('*').order('updated_at', { ascending: false })
+      if (error?.code === '42P01') { setTableReady(false) }
+      else { setTableReady(true); setItems(rows ?? []) }
     })
   }, [])
 
-  const currentParams = { cash, investments, realEstate, otherAssets, liabilities, income, expenses, invRet, reGrowth, incGrowth, expGrowth, paydown, projYears }
+  /* ── Computed totals ── */
+  const totals = CATEGORIES.reduce((acc, c) => {
+    acc[c.key] = items.filter(i => i.category === c.key).reduce((s, i) => s + i.amount, 0)
+    return acc
+  }, {} as Record<string, number>)
 
-  const handleLoad = (params: Record<string, unknown>) => {
-    if (typeof params.cash        === 'number') setCash(params.cash)
-    if (typeof params.investments === 'number') setInvestments(params.investments)
-    if (typeof params.realEstate  === 'number') setRealEstate(params.realEstate)
-    if (typeof params.otherAssets === 'number') setOtherAssets(params.otherAssets)
-    if (typeof params.liabilities === 'number') setLiabilities(params.liabilities)
-    if (typeof params.income      === 'number') setIncome(params.income)
-    if (typeof params.expenses    === 'number') setExpenses(params.expenses)
-    if (typeof params.invRet      === 'number') setInvRet(params.invRet)
-    if (typeof params.reGrowth    === 'number') setReGrowth(params.reGrowth)
-    if (typeof params.incGrowth   === 'number') setIncGrowth(params.incGrowth)
-    if (typeof params.expGrowth   === 'number') setExpGrowth(params.expGrowth)
-    if (typeof params.paydown     === 'number') setPaydown(params.paydown)
-    if (typeof params.projYears   === 'number') setProjYears(params.projYears)
+  const cash        = totals['流動資金'] ?? 0
+  const investments = totals['投資']    ?? 0
+  const realEstate  = totals['固定資產'] ?? 0
+  const otherAssets = totals['應收款']  ?? 0
+  const liabilities = totals['負債']    ?? 0
+  const totalAssets = cash + investments + realEstate + otherAssets
+  const netWorth    = totalAssets - liabilities
+
+  /* ── Add / Edit / Delete ── */
+  const openAdd = (cat: string) => {
+    setEditId(null)
+    setForm({ name: '', amount: '', note: '', category: cat })
+    setModalOpen(true)
   }
-  usePageParams('statements', currentParams, handleLoad)
+  const openEdit = (item: AssetItem) => {
+    setEditId(item.id)
+    setForm({ name: item.name, amount: String(item.amount), note: item.note ?? '', category: item.category })
+    setModalOpen(true)
+  }
+  const saveItem = async () => {
+    if (!form.name.trim()) return
+    setSaving(true)
+    const supabase = createClient()
+    const payload = { name: form.name.trim(), amount: Number(form.amount) || 0, note: form.note || null, category: form.category, updated_at: new Date().toISOString() }
+    if (editId) {
+      const { data } = await supabase.from('asset_items').update(payload).eq('id', editId).select().single()
+      if (data) setItems(p => p.map(i => i.id === editId ? data : i))
+    } else {
+      const { data } = await supabase.from('asset_items').insert(payload).select().single()
+      if (data) setItems(p => [data, ...p])
+    }
+    setSaving(false)
+    setModalOpen(false)
+  }
+  const deleteItem = async (id: string) => {
+    await createClient().from('asset_items').delete().eq('id', id)
+    setItems(p => p.filter(i => i.id !== id))
+  }
 
+  /* ── Snapshots ── */
   const recordSnapshot = () => {
     if (!userIdRef.current) return
     const todayStr = new Date().toISOString().slice(0, 10)
-    const snap: Snapshot = {
-      date: todayStr,
-      netWorth: records[0].netWorth,
-      totalAssets: records[0].totalAssets,
-      totalLiabilities: liabilities,
-    }
+    const snap: Snapshot = { date: todayStr, netWorth, totalAssets, totalLiabilities: liabilities }
     const existing = loadSnapshots(userIdRef.current)
-    // Replace same-day entry if exists
-    const filtered = existing.filter(s => s.date !== todayStr)
-    const updated = [...filtered, snap].sort((a, b) => a.date.localeCompare(b.date))
+    const updated = [...existing.filter(s => s.date !== todayStr), snap].sort((a, b) => a.date.localeCompare(b.date))
     saveSnapshots(userIdRef.current, updated)
     setSnapshots(updated)
     setSnapSaved(true)
     setTimeout(() => setSnapSaved(false), 2000)
   }
-
   const filteredSnaps = (() => {
     const days = RANGE_DAYS[snapRange]
     if (!days) return snapshots
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - days)
-    const cutoffStr = cutoff.toISOString().slice(0, 10)
-    return snapshots.filter(s => s.date >= cutoffStr)
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days)
+    return snapshots.filter(s => s.date >= cutoff.toISOString().slice(0, 10))
   })()
+  const snapChartData = filteredSnaps.map(s => ({ date: s.date.slice(5), 淨資產: s.netWorth, 總資產: s.totalAssets, 總負債: s.totalLiabilities }))
 
-  const snapChartData = filteredSnaps.map(s => ({
-    date: s.date.slice(5),   // MM-DD
-    淨資產: s.netWorth,
-    總資產: s.totalAssets,
-    總負債: s.totalLiabilities,
-  }))
+  /* ── Projection params ── */
+  const currentParams = { income, expenses, invRet, reGrowth, incGrowth, expGrowth, paydown, projYears }
+  const handleLoad = (p: Record<string, unknown>) => {
+    if (typeof p.income    === 'number') setIncome(p.income)
+    if (typeof p.expenses  === 'number') setExpenses(p.expenses)
+    if (typeof p.invRet    === 'number') setInvRet(p.invRet)
+    if (typeof p.reGrowth  === 'number') setReGrowth(p.reGrowth)
+    if (typeof p.incGrowth === 'number') setIncGrowth(p.incGrowth)
+    if (typeof p.expGrowth === 'number') setExpGrowth(p.expGrowth)
+    if (typeof p.paydown   === 'number') setPaydown(p.paydown)
+    if (typeof p.projYears === 'number') setProjYears(p.projYears)
+  }
+  usePageParams('statements', currentParams, handleLoad)
 
   const handleExport = () => {
     if (activeTab === 'bs') {
-      const headers = ['年', '現金', '投資', '不動產', '總資產', '負債', '淨值', '負債比%']
-      const rows = records.map(r => [r.year, r.cash, r.investments, r.realEstate, r.totalAssets, r.liabilities, r.netWorth, r.debtToAssets])
-      downloadCSV('資產負債表.csv', headers, rows)
+      downloadCSV('資產負債表.csv', ['年','現金','投資','不動產','總資產','負債','淨值','負債比%'],
+        records.map(r => [r.year, r.cash, r.investments, r.realEstate, r.totalAssets, r.liabilities, r.netWorth, r.debtToAssets]))
     } else {
-      const headers = ['年', '薪資收入', '投資收益', '總收入', '總支出', '淨收入', '儲蓄率%']
-      const rows = records.map(r => [r.year, r.annualIncome, r.investmentIncome, r.totalIncome, r.annualExpenses, r.netIncome, r.savingsRate])
-      downloadCSV('損益表.csv', headers, rows)
+      downloadCSV('損益表.csv', ['年','薪資收入','投資收益','總收入','總支出','淨收入','儲蓄率%'],
+        records.map(r => [r.year, r.annualIncome, r.investmentIncome, r.totalIncome, r.annualExpenses, r.netIncome, r.savingsRate]))
     }
   }
 
@@ -187,69 +208,126 @@ export default function StatementsPage() {
   const today = records[0]
   const final = records[records.length - 1]
 
-  const bsChartData = records.map(r => ({
-    year: `Y${r.year}`,
-    現金: r.cash, 投資: r.investments, 不動產: r.realEstate, 其他: r.otherAssets,
-    負債: -r.liabilities, 淨值: r.netWorth,
-  }))
+  const bsChartData = records.map(r => ({ year: `Y${r.year}`, 現金: r.cash, 投資: r.investments, 不動產: r.realEstate, 其他: r.otherAssets, 負債: -r.liabilities, 淨值: r.netWorth }))
+  const plChartData = records.map(r => ({ year: `Y${r.year}`, 總收入: r.totalIncome, 總支出: r.annualExpenses, 淨收入: r.netIncome }))
 
-  const plChartData = records.map(r => ({
-    year: `Y${r.year}`,
-    總收入: r.totalIncome, 總支出: r.annualExpenses, 淨收入: r.netIncome,
-  }))
+  /* ─── Setup SQL card ─── */
+  if (tableReady === false) return (
+    <div style={{ fontFamily: D.font }}>
+      <h1 className="text-xl font-bold mb-6" style={{ color: D.ink }}>財務報表</h1>
+      <div className="rounded-2xl p-6 max-w-2xl" style={{ backgroundColor: D.surface }}>
+        <p className="text-sm font-medium mb-2" style={{ color: D.ink }}>需要建立資料表</p>
+        <p className="text-xs mb-4" style={{ color: D.muted }}>請到 Supabase Dashboard → SQL Editor 執行以下指令：</p>
+        <pre className="text-xs rounded-xl p-4 overflow-x-auto" style={{ backgroundColor: D.bg, color: D.ink }}>{SETUP_SQL}</pre>
+      </div>
+    </div>
+  )
 
+  /* ─── Main render ─── */
   return (
     <div style={{ fontFamily: D.font }}>
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold" style={{ color: D.ink }}>財務報表</h1>
-        <button
-          onClick={() => {
-            const s = readStore()
-            if (s.totalDebt) setLiabilities(s.totalDebt)
-            if (s.totalMonthlyDebtPayment) setExpenses(e => Math.max(e, s.totalMonthlyDebtPayment!))
-          }}
-          className="text-xs px-3 py-1.5 rounded-xl transition-opacity hover:opacity-70"
-          style={{ backgroundColor: D.surface, color: D.muted }}
-          title="從負債管理頁面載入負債總額"
-        >
-          ↓ 從負債管理同步
-        </button>
+        <div>
+          <h1 className="text-xl font-bold" style={{ color: D.ink }}>財務報表</h1>
+          {tableReady && (
+            <p className="text-xs mt-0.5" style={{ color: D.muted }}>
+              淨值 <span style={{ color: netWorth >= 0 ? D.accent : '#ef4444' }}>{netWorth >= 0 ? '' : '-'}{fmt(netWorth)}</span>
+              　總資產 {fmt(totalAssets)}　負債 {fmt(liabilities)}
+            </p>
+          )}
+        </div>
+        <div className="mb-4">
+          <ScenarioBar page="statements" currentParams={currentParams} onLoad={handleLoad} onExport={handleExport} />
+        </div>
       </div>
 
-      <div className="mb-4">
-        <ScenarioBar page="statements" currentParams={currentParams} onLoad={handleLoad} onExport={handleExport} />
-      </div>
+      {/* ── Asset categories grid ── */}
+      {tableReady && (
+        <div className="rounded-2xl p-5 mb-6" style={{ backgroundColor: D.surface }}>
+          <p className="text-xs font-medium mb-4" style={{ color: D.ink }}>資產與負債明細</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            {CATEGORIES.map(cat => {
+              const catItems = items.filter(i => i.category === cat.key)
+              const total = catItems.reduce((s, i) => s + i.amount, 0)
+              const isLiab = cat.key === '負債'
+              return (
+                <div key={cat.key} className="rounded-xl p-3 flex flex-col" style={{ backgroundColor: D.bg, minHeight: 120 }}>
+                  {/* Category header */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                      <span className="text-xs font-medium" style={{ color: D.ink }}>{cat.label}</span>
+                    </div>
+                    <button onClick={() => openAdd(cat.key)}
+                      className="w-5 h-5 rounded-md flex items-center justify-center text-xs transition-opacity hover:opacity-70"
+                      style={{ backgroundColor: D.surface, color: D.muted }}>+</button>
+                  </div>
 
+                  {/* Total */}
+                  <p className="text-base font-bold mb-2" style={{ color: isLiab ? '#ef4444' : cat.color }}>
+                    {isLiab && total > 0 ? '−' : ''}{fmtShort(total)}
+                  </p>
+
+                  {/* Items */}
+                  <div className="flex-1 space-y-1">
+                    {catItems.length === 0 && (
+                      <p className="text-xs" style={{ color: D.muted, opacity: 0.4 }}>{cat.hint}</p>
+                    )}
+                    {catItems.map(item => (
+                      <div key={item.id} className="flex items-center justify-between gap-1 group">
+                        <button onClick={() => openEdit(item)}
+                          className="text-xs truncate text-left flex-1 transition-opacity hover:opacity-70"
+                          style={{ color: D.muted }}
+                          title={item.note ?? item.name}>
+                          {item.name}
+                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-xs" style={{ color: D.ink }}>{fmtShort(item.amount)}</span>
+                          <button onClick={() => deleteItem(item.id)}
+                            className="text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:opacity-50"
+                            style={{ color: D.muted }}>✕</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Main layout: sidebar (sliders) + content (charts) */}
       <div className="flex flex-col lg:flex-row gap-6">
-        <aside className="lg:w-60 shrink-0">
+        {/* ── Left sidebar: projection inputs ── */}
+        <aside className="lg:w-60 shrink-0 space-y-4">
           <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
-            <p className="text-xs mb-3" style={{ color: D.muted }}>資產負債（現況）</p>
-            <NumberInput label="現金 / 存款 (NT$)" value={cash}        onChange={setCash} />
-            <NumberInput label="投資組合 (NT$)"     value={investments} onChange={setInvestments} />
-            <NumberInput label="不動產 (NT$)"       value={realEstate}  onChange={setRealEstate} />
-            <NumberInput label="其他資產 (NT$)"     value={otherAssets} onChange={setOtherAssets} />
-            <NumberInput label="負債 (NT$)"         value={liabilities} onChange={setLiabilities} />
-
-            <div className="my-4" style={{ borderTop: `1px solid var(--subtle)` }} />
             <p className="text-xs mb-3" style={{ color: D.muted }}>每月收支</p>
-            <Slider label="每月收入" value={income}   min={20_000} max={500_000} step={5_000}
-              format={fmt} onChange={setIncome} />
-            <Slider label="每月支出" value={expenses} min={10_000} max={300_000} step={5_000}
-              format={fmt} onChange={setExpenses} />
+            <Slider label="每月收入" value={income}   min={20_000} max={500_000} step={5_000} format={fmt} onChange={setIncome} />
+            <Slider label="每月支出" value={expenses} min={10_000} max={300_000} step={5_000} format={fmt} onChange={setExpenses} />
+          </div>
 
-            <div className="my-4" style={{ borderTop: `1px solid var(--subtle)` }} />
+          <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
             <p className="text-xs mb-3" style={{ color: D.muted }}>成長假設（年化）</p>
             <Slider label="投資報酬率"       value={invRet}    min={0} max={20} step={0.1} format={v => `${v.toFixed(1)}%`} onChange={setInvRet} />
-            <Slider label="不動產增值"       value={reGrowth}  min={0} max={10} step={0.1} format={v => `${v.toFixed(1)}%`} onChange={setReGrowth} />
+            <Slider label="固定資產增值"     value={reGrowth}  min={0} max={10} step={0.1} format={v => `${v.toFixed(1)}%`} onChange={setReGrowth} />
             <Slider label="收入成長率"       value={incGrowth} min={0} max={10} step={0.1} format={v => `${v.toFixed(1)}%`} onChange={setIncGrowth} />
             <Slider label="支出成長（通膨）" value={expGrowth} min={0} max={8}  step={0.1} format={v => `${v.toFixed(1)}%`} onChange={setExpGrowth} />
-            <NumberInput label="每年還款本金 (NT$)" value={paydown} onChange={setPaydown} />
-            <Slider label="預測年限" value={projYears} min={5} max={40} step={1}
-              format={v => `${v} 年`} onChange={setProjYears} />
+            <div className="mt-3">
+              <label className="text-xs block mb-1" style={{ color: D.muted }}>每年還款本金 (NT$)</label>
+              <input type="number" value={paydown} step={50000}
+                onChange={e => setPaydown(Number(e.target.value))}
+                className="w-full rounded-xl px-3 py-2 text-xs focus:outline-none"
+                style={{ backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }} />
+            </div>
+            <Slider label="預測年限" value={projYears} min={5} max={40} step={1} format={v => `${v} 年`} onChange={setProjYears} />
           </div>
         </aside>
 
+        {/* ── Main content ── */}
         <div className="flex-1 space-y-4">
+          {/* Summary metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: '目前淨值',             value: fmt(today.netWorth),                 accent: true  },
@@ -264,7 +342,7 @@ export default function StatementsPage() {
             ))}
           </div>
 
-          {/* ── Net Worth Trend (Historical Snapshots) ── */}
+          {/* ── Net Worth Trend (Snapshots) ── */}
           <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
             <div className="flex items-center justify-between mb-3">
               <div>
@@ -272,7 +350,6 @@ export default function StatementsPage() {
                 <p className="text-xs mt-0.5" style={{ color: D.muted }}>記錄歷史快照，追蹤淨值成長</p>
               </div>
               <div className="flex items-center gap-2">
-                {/* Time range pills */}
                 <div className="flex gap-1">
                   {Object.keys(RANGE_DAYS).map(r => (
                     <button key={r} onClick={() => setSnapRange(r)}
@@ -281,54 +358,44 @@ export default function StatementsPage() {
                     >{r}</button>
                   ))}
                 </div>
-                <button
-                  onClick={recordSnapshot}
+                <button onClick={recordSnapshot}
                   className="px-3 py-1.5 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
-                  style={{ backgroundColor: D.accent, color: '#fff', opacity: snapSaved ? 0.6 : 1 }}
-                >
+                  style={{ backgroundColor: D.accent, color: '#fff', opacity: snapSaved ? 0.6 : 1 }}>
                   {snapSaved ? '✓ 已記錄' : '+ 記錄今日'}
                 </button>
               </div>
             </div>
 
             {snapChartData.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-32 gap-2">
+              <div className="flex flex-col items-center justify-center h-28 gap-1">
                 <p className="text-xs" style={{ color: D.muted }}>尚無快照紀錄</p>
-                <p className="text-xs" style={{ color: D.muted, opacity: 0.6 }}>點擊「+ 記錄今日」開始追蹤淨值變化</p>
+                <p className="text-xs" style={{ color: D.muted, opacity: 0.5 }}>點擊「+ 記錄今日」開始追蹤淨值變化</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
+              <ResponsiveContainer width="100%" height={200}>
                 <AreaChart data={snapChartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                   <defs>
-                    <linearGradient id="gradAssets" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--ink)" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="var(--ink)" stopOpacity={0} />
+                    <linearGradient id="gA" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--ink)" stopOpacity={0.15} /><stop offset="95%" stopColor="var(--ink)" stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id="gradNet" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
+                    <linearGradient id="gN" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.2} /><stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
-                  <YAxis tickFormatter={v => `${(v / 10000).toFixed(0)}萬`}
-                    tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(v: any) => fmt(Number(v))}
-                    contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
+                  <YAxis tickFormatter={v => `${(v / 10000).toFixed(0)}萬`} tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(v: any) => fmt(Number(v))} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Area type="monotone" dataKey="總資產" stroke="var(--ink)" strokeWidth={1.5}
-                    fill="url(#gradAssets)" strokeOpacity={0.6} dot={{ r: 3, fill: 'var(--ink)' }} />
-                  <Area type="monotone" dataKey="淨資產" stroke="var(--accent)" strokeWidth={2}
-                    fill="url(#gradNet)" dot={{ r: 3, fill: 'var(--accent)' }} />
-                  <Line type="monotone" dataKey="總負債" stroke="var(--danger, #ef4444)" strokeWidth={1.5}
-                    strokeDasharray="4 2" dot={false} />
+                  <Area type="monotone" dataKey="總資產" stroke="var(--ink)" strokeWidth={1.5} fill="url(#gA)" strokeOpacity={0.6} dot={{ r: 3, fill: 'var(--ink)' }} />
+                  <Area type="monotone" dataKey="淨資產" stroke="var(--accent)" strokeWidth={2} fill="url(#gN)" dot={{ r: 3, fill: 'var(--accent)' }} />
+                  <Line type="monotone" dataKey="總負債" stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
                 </AreaChart>
               </ResponsiveContainer>
             )}
 
-            {/* Snapshot list (last 5) */}
             {snapshots.length > 0 && (
-              <div className="mt-4 pt-3" style={{ borderTop: `1px solid var(--subtle)` }}>
+              <div className="mt-3 pt-3" style={{ borderTop: `1px solid var(--subtle)` }}>
                 <p className="text-xs mb-2" style={{ color: D.muted }}>歷史紀錄（最近 {Math.min(snapshots.length, 5)} 筆）</p>
                 <div className="space-y-1">
                   {[...snapshots].reverse().slice(0, 5).map(s => (
@@ -338,16 +405,11 @@ export default function StatementsPage() {
                         <span style={{ color: D.muted }}>資產 {fmt(s.totalAssets)}</span>
                         <span style={{ color: D.muted }}>負債 {fmt(s.totalLiabilities)}</span>
                         <span className="font-medium" style={{ color: D.accent }}>淨值 {fmt(s.netWorth)}</span>
-                        <button
-                          onClick={() => {
-                            if (!userIdRef.current) return
-                            const updated = snapshots.filter(x => x.date !== s.date)
-                            saveSnapshots(userIdRef.current, updated)
-                            setSnapshots(updated)
-                          }}
-                          className="transition-opacity hover:opacity-50"
-                          style={{ color: D.muted }}
-                        >✕</button>
+                        <button onClick={() => {
+                          if (!userIdRef.current) return
+                          const u = snapshots.filter(x => x.date !== s.date)
+                          saveSnapshots(userIdRef.current, u); setSnapshots(u)
+                        }} className="transition-opacity hover:opacity-50" style={{ color: D.muted }}>✕</button>
                       </div>
                     </div>
                   ))}
@@ -356,36 +418,34 @@ export default function StatementsPage() {
             )}
           </div>
 
+          {/* ── B/S Projection Chart ── */}
           <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
-            <p className="text-xs mb-4" style={{ color: D.muted }}>資產結構與淨值（B/S）</p>
-            <ResponsiveContainer width="100%" height={320}>
+            <p className="text-xs mb-4" style={{ color: D.muted }}>資產結構與淨值預測（B/S）</p>
+            <ResponsiveContainer width="100%" height={300}>
               <BarChart data={bsChartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
                 <XAxis dataKey="year" tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={v => `${(v / 10000).toFixed(0)}萬`}
-                  tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(v: any) => fmt(Math.abs(Number(v)))}
-                  contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
+                <YAxis tickFormatter={v => `${(v / 10000).toFixed(0)}萬`} tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+                <Tooltip formatter={(v: any) => fmt(Math.abs(Number(v)))} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="現金"   stackId="a" fill="var(--ink)"    fillOpacity={0.7} />
-                <Bar dataKey="投資"   stackId="a" fill="var(--ink)"    fillOpacity={0.5} />
-                <Bar dataKey="不動產" stackId="a" fill="var(--ink)"    fillOpacity={0.3} />
-                <Bar dataKey="其他"   stackId="a" fill="var(--muted)"  fillOpacity={0.3} />
+                <Bar dataKey="現金"   stackId="a" fill="var(--ink)" fillOpacity={0.7} />
+                <Bar dataKey="投資"   stackId="a" fill="var(--ink)" fillOpacity={0.5} />
+                <Bar dataKey="不動產" stackId="a" fill="var(--ink)" fillOpacity={0.3} />
+                <Bar dataKey="其他"   stackId="a" fill="var(--muted)" fillOpacity={0.3} />
                 <Line type="monotone" dataKey="淨值" stroke="var(--accent)" strokeWidth={2} dot={false} />
               </BarChart>
             </ResponsiveContainer>
           </div>
 
+          {/* ── P/L Chart ── */}
           <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
-            <p className="text-xs mb-4" style={{ color: D.muted }}>損益表（P/L）趨勢</p>
-            <ResponsiveContainer width="100%" height={220}>
+            <p className="text-xs mb-4" style={{ color: D.muted }}>損益表趨勢（P/L）</p>
+            <ResponsiveContainer width="100%" height={200}>
               <LineChart data={plChartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
                 <XAxis dataKey="year" tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={v => `${(v / 10000).toFixed(0)}萬`}
-                  tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(v: any) => fmt(Number(v))}
-                  contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
+                <YAxis tickFormatter={v => `${(v / 10000).toFixed(0)}萬`} tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+                <Tooltip formatter={(v: any) => fmt(Number(v))} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Line type="monotone" dataKey="總收入" stroke="var(--ink)"    strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="總支出" stroke="var(--muted)"  strokeWidth={2} dot={false} />
@@ -394,6 +454,7 @@ export default function StatementsPage() {
             </ResponsiveContainer>
           </div>
 
+          {/* ── Projection table ── */}
           <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
             <div className="flex gap-2 mb-4">
               {(['bs', 'pl'] as const).map(tab => (
@@ -458,6 +519,80 @@ export default function StatementsPage() {
           <FormulaPanel formulas={FORMULAS} />
         </div>
       </div>
+
+      {/* ── Add / Edit Modal ── */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+          onClick={e => { if (e.target === e.currentTarget) setModalOpen(false) }}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ backgroundColor: D.surface }}>
+            <p className="text-sm font-semibold mb-4" style={{ color: D.ink }}>
+              {editId ? '編輯項目' : '新增項目'}
+            </p>
+
+            {/* Category selector */}
+            <div className="mb-3">
+              <label className="text-xs block mb-1" style={{ color: D.muted }}>類別</label>
+              <div className="flex flex-wrap gap-1.5">
+                {CATEGORIES.map(c => (
+                  <button key={c.key} onClick={() => setForm(f => ({ ...f, category: c.key }))}
+                    className="px-3 py-1 rounded-lg text-xs transition-opacity hover:opacity-70"
+                    style={{ backgroundColor: form.category === c.key ? c.color : D.bg, color: form.category === c.key ? '#fff' : D.muted }}>
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Name */}
+            <div className="mb-3">
+              <label className="text-xs block mb-1" style={{ color: D.muted }}>名稱</label>
+              <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="例：郵政金融卡、微軟股票…"
+                className="w-full rounded-xl px-3 py-2 text-xs focus:outline-none"
+                style={{ backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }} />
+            </div>
+
+            {/* Amount */}
+            <div className="mb-3">
+              <label className="text-xs block mb-1" style={{ color: D.muted }}>金額 (NT$)</label>
+              <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                placeholder="0"
+                className="w-full rounded-xl px-3 py-2 text-xs focus:outline-none"
+                style={{ backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }} />
+            </div>
+
+            {/* Note */}
+            <div className="mb-5">
+              <label className="text-xs block mb-1" style={{ color: D.muted }}>備註（選填）</label>
+              <input type="text" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
+                placeholder="說明、備忘…"
+                className="w-full rounded-xl px-3 py-2 text-xs focus:outline-none"
+                style={{ backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }} />
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => setModalOpen(false)}
+                className="flex-1 py-2 rounded-xl text-xs transition-opacity hover:opacity-70"
+                style={{ backgroundColor: D.bg, color: D.muted }}>取消</button>
+              <button onClick={saveItem} disabled={saving || !form.name.trim()}
+                className="flex-1 py-2 rounded-xl text-xs font-medium transition-opacity hover:opacity-70 disabled:opacity-40"
+                style={{ backgroundColor: D.accent, color: '#fff' }}>
+                {saving ? '儲存中…' : editId ? '更新' : '新增'}
+              </button>
+            </div>
+
+            {/* Delete button for edit mode */}
+            {editId && (
+              <button onClick={async () => {
+                await deleteItem(editId)
+                setModalOpen(false)
+              }} className="w-full mt-2 py-2 rounded-xl text-xs transition-opacity hover:opacity-70"
+                style={{ color: '#ef4444' }}>刪除此項目</button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
