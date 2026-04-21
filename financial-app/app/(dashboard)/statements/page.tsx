@@ -235,6 +235,25 @@ export default function StatementsPage() {
 
   const maskVal = (v: string) => amountsHidden ? '•••••' : v
 
+  /* ─── Loading skeleton ─── */
+  if (tableReady === null) return (
+    <div style={{ fontFamily: D.font }}>
+      <div className="mb-6">
+        <div className="h-3 w-16 rounded mb-3 animate-pulse" style={{ backgroundColor: D.surface }} />
+        <div className="h-8 w-48 rounded-xl animate-pulse" style={{ backgroundColor: D.surface }} />
+        <div className="h-3 w-64 rounded mt-2 animate-pulse" style={{ backgroundColor: D.surface }} />
+      </div>
+      <div className="rounded-2xl p-5 mb-6 animate-pulse" style={{ backgroundColor: D.surface }}>
+        <div className="h-3 w-24 rounded mb-4" style={{ backgroundColor: D.bg }} />
+        <div className="space-y-3">
+          {[1,2,3,4,5].map(i => (
+            <div key={i} className="rounded-xl h-14" style={{ backgroundColor: D.bg }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+
   /* ─── Setup SQL card ─── */
   if (tableReady === false) return (
     <div style={{ fontFamily: D.font }}>
