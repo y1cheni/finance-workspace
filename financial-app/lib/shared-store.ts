@@ -20,6 +20,8 @@ export interface SharedStore {
   // From cashflow page
   cfMonthlyIncome?: number
   cfMonthlyExpense?: number
+  // From portfolio page
+  portfolioTotal?: number
 }
 
 export function readStore(): SharedStore {

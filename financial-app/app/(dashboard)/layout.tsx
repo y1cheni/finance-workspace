@@ -20,11 +20,12 @@ const NAV_ICONS: Record<string, string> = {
   '/tax':           '§',
   '/cashflow':      '⇅',
   '/goals':         '◉',
+  '/portfolio':     '⬡',
   '/admin':         '⊙',
 }
 
 const DEFAULT_ORDER = [
-  '/compound', '/retirement', '/statements', '/subscriptions',
+  '/compound', '/retirement', '/portfolio', '/statements', '/subscriptions',
   '/debts', '/budget', '/tax', '/cashflow', '/goals',
 ]
 
@@ -90,6 +91,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { href: '/tax',           label: T.nav.tax           },
     { href: '/cashflow',      label: T.nav.cashflow      },
     { href: '/goals',         label: T.nav.goals         },
+    { href: '/portfolio',     label: T.nav.portfolio     },
   ]
 
   const sortedNav = navOrder

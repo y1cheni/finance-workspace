@@ -1,6 +1,6 @@
 'use client'
-import { useState } from 'react'
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+import { useState, useEffect, useRef } from 'react'
+import { BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
          Legend, ResponsiveContainer } from 'recharts'
 import { generateStatements } from '@/lib/statement-engine'
 import ScenarioBar from '@/components/ScenarioBar'
@@ -10,6 +10,29 @@ import Slider from '@/components/Slider'
 import FormulaPanel from '@/components/FormulaPanel'
 import { readStore } from '@/lib/shared-store'
 import { usePageParams } from '@/lib/use-page-params'
+import { createClient } from '@/lib/supabase'
+
+interface Snapshot {
+  date: string        // YYYY-MM-DD
+  netWorth: number
+  totalAssets: number
+  totalLiabilities: number
+}
+
+function loadSnapshots(userId: string): Snapshot[] {
+  try {
+    const raw = localStorage.getItem(`ftp-snapshots-${userId}`)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+
+function saveSnapshots(userId: string, snaps: Snapshot[]) {
+  localStorage.setItem(`ftp-snapshots-${userId}`, JSON.stringify(snaps))
+}
+
+const RANGE_DAYS: Record<string, number | null> = {
+  '30天': 30, '6月': 180, '1年': 365, '全部': null,
+}
 
 function fmt(n: number) { return `NT$ ${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
 
@@ -71,6 +94,22 @@ export default function StatementsPage() {
   const [projYears,   setProjYears]   = useState(20)
   const [activeTab,   setActiveTab]   = useState<'bs' | 'pl'>('bs')
 
+  // Snapshot trend state
+  const [snapshots,   setSnapshots]   = useState<Snapshot[]>([])
+  const [snapRange,   setSnapRange]   = useState<string>('全部')
+  const [snapSaved,   setSnapSaved]   = useState(false)
+  const userIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        userIdRef.current = data.user.id
+        setSnapshots(loadSnapshots(data.user.id))
+      }
+    })
+  }, [])
+
   const currentParams = { cash, investments, realEstate, otherAssets, liabilities, income, expenses, invRet, reGrowth, incGrowth, expGrowth, paydown, projYears }
 
   const handleLoad = (params: Record<string, unknown>) => {
@@ -89,6 +128,41 @@ export default function StatementsPage() {
     if (typeof params.projYears   === 'number') setProjYears(params.projYears)
   }
   usePageParams('statements', currentParams, handleLoad)
+
+  const recordSnapshot = () => {
+    if (!userIdRef.current) return
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const snap: Snapshot = {
+      date: todayStr,
+      netWorth: records[0].netWorth,
+      totalAssets: records[0].totalAssets,
+      totalLiabilities: liabilities,
+    }
+    const existing = loadSnapshots(userIdRef.current)
+    // Replace same-day entry if exists
+    const filtered = existing.filter(s => s.date !== todayStr)
+    const updated = [...filtered, snap].sort((a, b) => a.date.localeCompare(b.date))
+    saveSnapshots(userIdRef.current, updated)
+    setSnapshots(updated)
+    setSnapSaved(true)
+    setTimeout(() => setSnapSaved(false), 2000)
+  }
+
+  const filteredSnaps = (() => {
+    const days = RANGE_DAYS[snapRange]
+    if (!days) return snapshots
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - days)
+    const cutoffStr = cutoff.toISOString().slice(0, 10)
+    return snapshots.filter(s => s.date >= cutoffStr)
+  })()
+
+  const snapChartData = filteredSnaps.map(s => ({
+    date: s.date.slice(5),   // MM-DD
+    淨資產: s.netWorth,
+    總資產: s.totalAssets,
+    總負債: s.totalLiabilities,
+  }))
 
   const handleExport = () => {
     if (activeTab === 'bs') {
@@ -188,6 +262,98 @@ export default function StatementsPage() {
                 <p className="text-base font-bold" style={{ color: m.accent ? D.accent : D.ink }}>{m.value}</p>
               </div>
             ))}
+          </div>
+
+          {/* ── Net Worth Trend (Historical Snapshots) ── */}
+          <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-xs font-medium" style={{ color: D.ink }}>淨資產趨勢</p>
+                <p className="text-xs mt-0.5" style={{ color: D.muted }}>記錄歷史快照，追蹤淨值成長</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Time range pills */}
+                <div className="flex gap-1">
+                  {Object.keys(RANGE_DAYS).map(r => (
+                    <button key={r} onClick={() => setSnapRange(r)}
+                      className="px-2.5 py-1 rounded-lg text-xs transition-opacity hover:opacity-70"
+                      style={{ backgroundColor: snapRange === r ? D.ink : D.bg, color: snapRange === r ? D.bg : D.muted }}
+                    >{r}</button>
+                  ))}
+                </div>
+                <button
+                  onClick={recordSnapshot}
+                  className="px-3 py-1.5 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
+                  style={{ backgroundColor: D.accent, color: '#fff', opacity: snapSaved ? 0.6 : 1 }}
+                >
+                  {snapSaved ? '✓ 已記錄' : '+ 記錄今日'}
+                </button>
+              </div>
+            </div>
+
+            {snapChartData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-32 gap-2">
+                <p className="text-xs" style={{ color: D.muted }}>尚無快照紀錄</p>
+                <p className="text-xs" style={{ color: D.muted, opacity: 0.6 }}>點擊「+ 記錄今日」開始追蹤淨值變化</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={snapChartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                  <defs>
+                    <linearGradient id="gradAssets" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--ink)" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="var(--ink)" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="gradNet" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={v => `${(v / 10000).toFixed(0)}萬`}
+                    tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(v: any) => fmt(Number(v))}
+                    contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Area type="monotone" dataKey="總資產" stroke="var(--ink)" strokeWidth={1.5}
+                    fill="url(#gradAssets)" strokeOpacity={0.6} dot={{ r: 3, fill: 'var(--ink)' }} />
+                  <Area type="monotone" dataKey="淨資產" stroke="var(--accent)" strokeWidth={2}
+                    fill="url(#gradNet)" dot={{ r: 3, fill: 'var(--accent)' }} />
+                  <Line type="monotone" dataKey="總負債" stroke="var(--danger, #ef4444)" strokeWidth={1.5}
+                    strokeDasharray="4 2" dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+
+            {/* Snapshot list (last 5) */}
+            {snapshots.length > 0 && (
+              <div className="mt-4 pt-3" style={{ borderTop: `1px solid var(--subtle)` }}>
+                <p className="text-xs mb-2" style={{ color: D.muted }}>歷史紀錄（最近 {Math.min(snapshots.length, 5)} 筆）</p>
+                <div className="space-y-1">
+                  {[...snapshots].reverse().slice(0, 5).map(s => (
+                    <div key={s.date} className="flex items-center justify-between text-xs">
+                      <span style={{ color: D.muted }}>{s.date}</span>
+                      <div className="flex gap-4">
+                        <span style={{ color: D.muted }}>資產 {fmt(s.totalAssets)}</span>
+                        <span style={{ color: D.muted }}>負債 {fmt(s.totalLiabilities)}</span>
+                        <span className="font-medium" style={{ color: D.accent }}>淨值 {fmt(s.netWorth)}</span>
+                        <button
+                          onClick={() => {
+                            if (!userIdRef.current) return
+                            const updated = snapshots.filter(x => x.date !== s.date)
+                            saveSnapshots(userIdRef.current, updated)
+                            setSnapshots(updated)
+                          }}
+                          className="transition-opacity hover:opacity-50"
+                          style={{ color: D.muted }}
+                        >✕</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
