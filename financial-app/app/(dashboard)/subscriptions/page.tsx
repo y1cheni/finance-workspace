@@ -4,7 +4,6 @@ import { createClient } from '@/lib/supabase'
 import { D } from '@/lib/design'
 import { writeStore } from '@/lib/shared-store'
 import CsvImportModal from '@/components/CsvImportModal'
-import { pick, pickNum } from '@/lib/csv-import'
 
 const USD_RATE = 32.5
 
@@ -208,23 +207,39 @@ export default function SubscriptionsPage() {
       {showImport && (
         <CsvImportModal
           title="匯入訂閱資料"
-          templateCsv="名稱,費用,幣別,週期,下次扣款日,類別\nNetflix,390,TWD,monthly,2025-05-01,娛樂\nChatGPT,20,USD,monthly,2025-05-10,工具"
+          templateCsv={[
+            '名稱,費用,幣別,週期,下次扣款日,類別',
+            'Netflix,390,TWD,monthly,2026-05-01,娛樂',
+            'ChatGPT,20,USD,monthly,2026-05-10,工具',
+          ].join('\n')}
           templateFilename="訂閱範本.csv"
-          transform={(row, i) => {
-            const name = pick(row, ['名稱', 'name', 'Name'])
-            const cost = pickNum(row, ['費用', 'cost', 'Cost', '金額'])
-            if (!name) return { ok: false, error: '缺少名稱' }
-            if (cost <= 0) return { ok: false, error: '費用必須大於 0' }
-            const currency = pick(row, ['幣別', 'currency']) || 'TWD'
-            const billing_cycle = pick(row, ['週期', 'billing_cycle', 'cycle']) || 'monthly'
-            const next_charge_date = pick(row, ['下次扣款日', 'next_charge_date', 'next_date']) || null
-            const category = pick(row, ['類別', 'category']) || null
-            return { ok: true, data: { name, cost, currency, billing_cycle, next_charge_date, category, active: true } }
+          fields={[
+            { key: 'name',             label: '名稱',   required: true, type: 'text'   },
+            { key: 'cost',             label: '費用',   required: true, type: 'number' },
+            { key: 'currency',         label: '幣別',   type: 'text', defaultValue: 'TWD',
+              hint: 'TWD / USD' },
+            { key: 'billing_cycle',    label: '週期',   type: 'text', defaultValue: 'monthly',
+              hint: 'monthly/yearly/weekly' },
+            { key: 'next_charge_date', label: '下次扣款日', type: 'date' },
+            { key: 'category',         label: '類別',   type: 'text' },
+          ]}
+          validate={(rec) => {
+            if ((rec.cost as number) <= 0) return '費用必須大於 0'
+            return null
           }}
           onConfirm={async (records) => {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
-            const rows = (records as Omit<Sub, 'id'>[]).map(r => ({ ...r, user_id: user.id }))
+            const rows = records.map(r => ({
+              name:             r.name as string,
+              cost:             r.cost as number,
+              currency:         (r.currency as string) || 'TWD',
+              billing_cycle:    (r.billing_cycle as string) || 'monthly',
+              next_charge_date: (r.next_charge_date as string) || null,
+              category:         (r.category as string) || null,
+              active:           true,
+              user_id:          user.id,
+            }))
             const { data } = await supabase.from('subscriptions').insert(rows).select()
             if (data) setSubs(prev => [...prev, ...(data as Sub[])])
           }}
