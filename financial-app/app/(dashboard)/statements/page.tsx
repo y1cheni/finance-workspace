@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+import { AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
          Legend, ResponsiveContainer } from 'recharts'
 import { generateStatements } from '@/lib/statement-engine'
 import ScenarioBar from '@/components/ScenarioBar'
@@ -21,7 +21,7 @@ function saveSnapshots(uid: string, s: Snapshot[]) {
   localStorage.setItem(`ftp-snapshots-${uid}`, JSON.stringify(s))
 }
 
-const RANGE_DAYS: Record<string, number | null> = { '30天': 30, '6月': 180, '1年': 365, '全部': null }
+const RANGE_DAYS: Record<string, number | null> = { '30天': 30, '6月': 180, '1年': 365, '年初至今': -1, '全部': null }
 
 /* ─── Asset Items ─── */
 interface AssetItem { id: string; category: string; name: string; amount: number; note: string | null; updated_at: string }
@@ -29,7 +29,7 @@ interface AssetItem { id: string; category: string; name: string; amount: number
 const CATEGORIES = [
   { key: '流動資金', label: '流動資金', hint: '現金、存款、電子支付', color: '#22c55e' },
   { key: '投資',    label: '投資',    hint: '股票、基金、加密貨幣', color: '#818cf8' },
-  { key: '固定資產', label: '固定資產', hint: '不動產、車輛、設備',  color: '#f59e0b' },
+  { key: '固定資產', label: '固定資產', hint: '不動產、車輛、設備',  color: '#3b82f6' },
   { key: '應收款',  label: '應收款',  hint: '借出款項、預付款',    color: '#06b6d4' },
   { key: '負債',    label: '負債',    hint: '貸款、信用卡餘額',    color: '#ef4444' },
 ]
@@ -48,12 +48,20 @@ create policy "Users manage own asset items"
   on asset_items for all using (auth.uid() = user_id);`
 
 /* ─── Helpers ─── */
-function fmt(n: number) { return `NT$\u00a0${Math.abs(n).toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
+function fmt(n: number) { return `NT$ ${Math.abs(n).toLocaleString('zh-TW', { maximumFractionDigits: 0 })}` }
 function fmtShort(n: number) {
   const abs = Math.abs(n)
   if (abs >= 1_000_000) return `${(abs / 10_000).toFixed(0)}萬`
   if (abs >= 10_000)    return `${(abs / 10_000).toFixed(1)}萬`
   return abs.toLocaleString('zh-TW')
+}
+function fmtDate(iso: string) {
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}月${d.getDate()}日 更新`
+}
+function ytdCutoff() {
+  const d = new Date(); d.setMonth(0); d.setDate(1)
+  return d.toISOString().slice(0, 10)
 }
 
 const FORMULAS = [
@@ -70,15 +78,24 @@ export default function StatementsPage() {
   /* Asset items */
   const [items,       setItems]       = useState<AssetItem[]>([])
   const [tableReady,  setTableReady]  = useState<boolean | null>(null)
-  const [modalOpen,   setModalOpen]   = useState(false)
+
+  /* Modal state — step 1: pick category, step 2: fill form */
+  const [modalStep,   setModalStep]   = useState<0 | 1 | 2>(0) // 0=closed 1=pick-cat 2=form
   const [editId,      setEditId]      = useState<string | null>(null)
   const [form,        setForm]        = useState({ name: '', amount: '', note: '', category: '流動資金' })
   const [saving,      setSaving]      = useState(false)
+
+  /* Visibility toggle */
+  const [amountsHidden, setAmountsHidden] = useState(false)
+
+  /* Expanded category detail */
+  const [expandedCat, setExpandedCat] = useState<string | null>(null)
 
   /* Snapshots */
   const [snapshots,   setSnapshots]   = useState<Snapshot[]>([])
   const [snapRange,   setSnapRange]   = useState('全部')
   const [snapSaved,   setSnapSaved]   = useState(false)
+  const [trendTab,    setTrendTab]    = useState<'networth' | 'liquid'>('networth')
 
   /* Projection params */
   const [income,      setIncome]      = useState(80_000)
@@ -123,15 +140,19 @@ export default function StatementsPage() {
   const netWorth    = totalAssets - liabilities
 
   /* ── Add / Edit / Delete ── */
-  const openAdd = (cat: string) => {
+  const openAdd = (cat?: string) => {
     setEditId(null)
-    setForm({ name: '', amount: '', note: '', category: cat })
-    setModalOpen(true)
+    if (cat) {
+      setForm({ name: '', amount: '', note: '', category: cat })
+      setModalStep(2)
+    } else {
+      setModalStep(1)
+    }
   }
   const openEdit = (item: AssetItem) => {
     setEditId(item.id)
     setForm({ name: item.name, amount: String(item.amount), note: item.note ?? '', category: item.category })
-    setModalOpen(true)
+    setModalStep(2)
   }
   const saveItem = async () => {
     if (!form.name.trim()) return
@@ -146,7 +167,7 @@ export default function StatementsPage() {
       if (data) setItems(p => [data, ...p])
     }
     setSaving(false)
-    setModalOpen(false)
+    setModalStep(0)
   }
   const deleteItem = async (id: string) => {
     await createClient().from('asset_items').delete().eq('id', id)
@@ -167,13 +188,14 @@ export default function StatementsPage() {
   }
   const filteredSnaps = (() => {
     const days = RANGE_DAYS[snapRange]
-    if (!days) return snapshots
+    if (days === null) return snapshots
+    if (days === -1) return snapshots.filter(s => s.date >= ytdCutoff())
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days)
     return snapshots.filter(s => s.date >= cutoff.toISOString().slice(0, 10))
   })()
-  const snapChartData = filteredSnaps.map(s => ({ date: s.date.slice(5), 淨資產: s.netWorth, 總資產: s.totalAssets, 總負債: s.totalLiabilities }))
+  const snapChartData = filteredSnaps.map(s => ({ date: s.date.slice(5), 淨資產: s.netWorth, 總資產: s.totalAssets, 總負債: s.totalLiabilities, 流動資金: 0, 投資: 0 }))
 
-  /* ── Projection params ── */
+  /* ── Projection ── */
   const currentParams = { income, expenses, invRet, reGrowth, incGrowth, expGrowth, paydown, projYears }
   const handleLoad = (p: Record<string, unknown>) => {
     if (typeof p.income    === 'number') setIncome(p.income)
@@ -211,6 +233,8 @@ export default function StatementsPage() {
   const bsChartData = records.map(r => ({ year: `Y${r.year}`, 現金: r.cash, 投資: r.investments, 不動產: r.realEstate, 其他: r.otherAssets, 負債: -r.liabilities, 淨值: r.netWorth }))
   const plChartData = records.map(r => ({ year: `Y${r.year}`, 總收入: r.totalIncome, 總支出: r.annualExpenses, 淨收入: r.netIncome }))
 
+  const maskVal = (v: string) => amountsHidden ? '•••••' : v
+
   /* ─── Setup SQL card ─── */
   if (tableReady === false) return (
     <div style={{ fontFamily: D.font }}>
@@ -227,70 +251,121 @@ export default function StatementsPage() {
   return (
     <div style={{ fontFamily: D.font }}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold" style={{ color: D.ink }}>財務報表</h1>
+          <p className="text-xs mb-1" style={{ color: D.muted }}>財務報表</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold tracking-tight" style={{ color: D.ink }}>
+              {maskVal(fmt(netWorth))}
+            </h1>
+            <button onClick={() => setAmountsHidden(v => !v)}
+              className="transition-opacity hover:opacity-60"
+              style={{ color: D.muted, fontSize: 18 }}>
+              {amountsHidden ? '○' : '◎'}
+            </button>
+          </div>
           {tableReady && (
-            <p className="text-xs mt-0.5" style={{ color: D.muted }}>
-              淨值 <span style={{ color: netWorth >= 0 ? D.accent : '#ef4444' }}>{netWorth >= 0 ? '' : '-'}{fmt(netWorth)}</span>
-              　總資產 {fmt(totalAssets)}　負債 {fmt(liabilities)}
+            <p className="text-xs mt-1" style={{ color: D.muted }}>
+              總資產 {maskVal(fmt(totalAssets))}　負債 {maskVal(fmt(liabilities))}
             </p>
           )}
         </div>
-        <div className="mb-4">
+        <div className="flex items-center gap-2 mt-1">
           <ScenarioBar page="statements" currentParams={currentParams} onLoad={handleLoad} onExport={handleExport} />
+          {tableReady && (
+            <button onClick={() => openAdd()}
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-lg font-light transition-opacity hover:opacity-70"
+              style={{ backgroundColor: D.accent, color: '#fff' }}>+</button>
+          )}
         </div>
       </div>
 
-      {/* ── Asset categories grid ── */}
+      {/* ── Asset category list ── */}
       {tableReady && (
         <div className="rounded-2xl p-5 mb-6" style={{ backgroundColor: D.surface }}>
-          <p className="text-xs font-medium mb-4" style={{ color: D.ink }}>資產與負債明細</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          <p className="text-xs font-medium mb-4" style={{ color: D.muted }}>資產與負債明細</p>
+          <div className="space-y-3">
             {CATEGORIES.map(cat => {
               const catItems = items.filter(i => i.category === cat.key)
               const total = catItems.reduce((s, i) => s + i.amount, 0)
               const isLiab = cat.key === '負債'
+              const previewNames = catItems.map(i => i.name).join('、')
+              const latestUpdate = catItems.length > 0
+                ? catItems.reduce((a, b) => a.updated_at > b.updated_at ? a : b).updated_at
+                : null
+              const isExpanded = expandedCat === cat.key
+
               return (
-                <div key={cat.key} className="rounded-xl p-3 flex flex-col" style={{ backgroundColor: D.bg, minHeight: 120 }}>
-                  {/* Category header */}
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
-                      <span className="text-xs font-medium" style={{ color: D.ink }}>{cat.label}</span>
-                    </div>
-                    <button onClick={() => openAdd(cat.key)}
-                      className="w-5 h-5 rounded-md flex items-center justify-center text-xs transition-opacity hover:opacity-70"
-                      style={{ backgroundColor: D.surface, color: D.muted }}>+</button>
-                  </div>
+                <div key={cat.key} className="rounded-xl overflow-hidden" style={{ backgroundColor: D.bg }}>
+                  {/* Card row */}
+                  <div
+                    className="flex items-stretch cursor-pointer"
+                    onClick={() => setExpandedCat(isExpanded ? null : cat.key)}
+                  >
+                    {/* Left color bar */}
+                    <div className="w-1 shrink-0 rounded-l-xl" style={{ backgroundColor: cat.color }} />
 
-                  {/* Total */}
-                  <p className="text-base font-bold mb-2" style={{ color: isLiab ? '#ef4444' : cat.color }}>
-                    {isLiab && total > 0 ? '−' : ''}{fmtShort(total)}
-                  </p>
-
-                  {/* Items */}
-                  <div className="flex-1 space-y-1">
-                    {catItems.length === 0 && (
-                      <p className="text-xs" style={{ color: D.muted, opacity: 0.4 }}>{cat.hint}</p>
-                    )}
-                    {catItems.map(item => (
-                      <div key={item.id} className="flex items-center justify-between gap-1 group">
-                        <button onClick={() => openEdit(item)}
-                          className="text-xs truncate text-left flex-1 transition-opacity hover:opacity-70"
-                          style={{ color: D.muted }}
-                          title={item.note ?? item.name}>
-                          {item.name}
-                        </button>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <span className="text-xs" style={{ color: D.ink }}>{fmtShort(item.amount)}</span>
-                          <button onClick={() => deleteItem(item.id)}
-                            className="text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:opacity-50"
-                            style={{ color: D.muted }}>✕</button>
-                        </div>
+                    {/* Content */}
+                    <div className="flex-1 flex items-center justify-between px-4 py-3 gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium" style={{ color: D.ink }}>{cat.label}</p>
+                        {previewNames ? (
+                          <p className="text-xs mt-0.5 truncate" style={{ color: D.muted }}>{previewNames}</p>
+                        ) : (
+                          <p className="text-xs mt-0.5" style={{ color: D.muted, opacity: 0.4 }}>{cat.hint}</p>
+                        )}
+                        {latestUpdate && (
+                          <p className="text-xs mt-0.5" style={{ color: D.muted, opacity: 0.5 }}>{fmtDate(latestUpdate)}</p>
+                        )}
                       </div>
-                    ))}
+                      <div className="text-right shrink-0">
+                        {isLiab && total > 0 ? (
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <span className="w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold"
+                              style={{ backgroundColor: '#ef4444', color: '#fff' }}>−</span>
+                            <span className="text-base font-bold" style={{ color: '#ef4444' }}>
+                              {maskVal(fmtShort(total))}
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="text-base font-bold" style={{ color: cat.color }}>
+                            {maskVal(fmtShort(total))}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Expanded items */}
+                  {isExpanded && (
+                    <div className="px-5 pb-3 pt-1" style={{ borderTop: `1px solid var(--subtle)` }}>
+                      <div className="space-y-1.5 mb-2">
+                        {catItems.length === 0 && (
+                          <p className="text-xs py-1" style={{ color: D.muted, opacity: 0.4 }}>尚無項目</p>
+                        )}
+                        {catItems.map(item => (
+                          <div key={item.id} className="flex items-center justify-between gap-2 group">
+                            <button onClick={e => { e.stopPropagation(); openEdit(item) }}
+                              className="text-xs truncate text-left flex-1 transition-opacity hover:opacity-70"
+                              style={{ color: D.muted }}
+                              title={item.note ?? item.name}>
+                              {item.name}
+                              {item.note && <span className="ml-1 opacity-50">({item.note})</span>}
+                            </button>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-xs font-medium" style={{ color: D.ink }}>{maskVal(fmtShort(item.amount))}</span>
+                              <button onClick={e => { e.stopPropagation(); deleteItem(item.id) }}
+                                className="text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:opacity-50"
+                                style={{ color: D.muted }}>✕</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <button onClick={e => { e.stopPropagation(); openAdd(cat.key) }}
+                        className="text-xs transition-opacity hover:opacity-70"
+                        style={{ color: D.accent }}>+ 新增{cat.label}項目</button>
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -330,8 +405,8 @@ export default function StatementsPage() {
           {/* Summary metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: '目前淨值',             value: fmt(today.netWorth),                 accent: true  },
-              { label: `${projYears} 年後淨值`, value: fmt(final.netWorth),                accent: false },
+              { label: '目前淨值',             value: maskVal(fmt(today.netWorth)),                 accent: true  },
+              { label: `${projYears} 年後淨值`, value: maskVal(fmt(final.netWorth)),                accent: false },
               { label: '目前儲蓄率',           value: `${today.savingsRate.toFixed(1)}%`,  accent: false },
               { label: '目前負債比',           value: `${today.debtToAssets.toFixed(1)}%`, accent: false },
             ].map(m => (
@@ -344,26 +419,38 @@ export default function StatementsPage() {
 
           {/* ── Net Worth Trend (Snapshots) ── */}
           <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-xs font-medium" style={{ color: D.ink }}>淨資產趨勢</p>
-                <p className="text-xs mt-0.5" style={{ color: D.muted }}>記錄歷史快照，追蹤淨值成長</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex gap-1">
-                  {Object.keys(RANGE_DAYS).map(r => (
-                    <button key={r} onClick={() => setSnapRange(r)}
-                      className="px-2.5 py-1 rounded-lg text-xs transition-opacity hover:opacity-70"
-                      style={{ backgroundColor: snapRange === r ? D.ink : D.bg, color: snapRange === r ? D.bg : D.muted }}
-                    >{r}</button>
-                  ))}
-                </div>
-                <button onClick={recordSnapshot}
-                  className="px-3 py-1.5 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
-                  style={{ backgroundColor: D.accent, color: '#fff', opacity: snapSaved ? 0.6 : 1 }}>
-                  {snapSaved ? '✓ 已記錄' : '+ 記錄今日'}
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs font-medium" style={{ color: D.ink }}>趨勢圖</p>
+              <button onClick={recordSnapshot}
+                className="px-3 py-1.5 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
+                style={{ backgroundColor: D.accent, color: '#fff', opacity: snapSaved ? 0.6 : 1 }}>
+                {snapSaved ? '✓ 已記錄' : '+ 記錄今日'}
+              </button>
+            </div>
+
+            {/* Tab toggle */}
+            <div className="flex rounded-xl p-1 mb-4 gap-1" style={{ backgroundColor: D.bg }}>
+              {[
+                { key: 'networth', label: '淨資產與負債' },
+                { key: 'liquid',   label: '流動資金與投資' },
+              ].map(t => (
+                <button key={t.key} onClick={() => setTrendTab(t.key as typeof trendTab)}
+                  className="flex-1 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-80"
+                  style={{ backgroundColor: trendTab === t.key ? D.surface : 'transparent', color: trendTab === t.key ? D.ink : D.muted }}>
+                  {t.label}
                 </button>
-              </div>
+              ))}
+            </div>
+
+            {/* Range selector */}
+            <div className="flex gap-1 mb-4">
+              {Object.keys(RANGE_DAYS).map(r => (
+                <button key={r} onClick={() => setSnapRange(r)}
+                  className="px-2.5 py-1 rounded-lg text-xs transition-opacity hover:opacity-70"
+                  style={{ backgroundColor: snapRange === r ? D.ink : D.bg, color: snapRange === r ? D.bg : D.muted }}>
+                  {r}
+                </button>
+              ))}
             </div>
 
             {snapChartData.length === 0 ? (
@@ -385,11 +472,16 @@ export default function StatementsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={v => `${(v / 10000).toFixed(0)}萬`} tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(v: any) => fmt(Number(v))} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
+                  <Tooltip formatter={(v: unknown) => fmt(Number(v))} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Area type="monotone" dataKey="總資產" stroke="var(--ink)" strokeWidth={1.5} fill="url(#gA)" strokeOpacity={0.6} dot={{ r: 3, fill: 'var(--ink)' }} />
-                  <Area type="monotone" dataKey="淨資產" stroke="var(--accent)" strokeWidth={2} fill="url(#gN)" dot={{ r: 3, fill: 'var(--accent)' }} />
-                  <Line type="monotone" dataKey="總負債" stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
+                  {trendTab === 'networth' ? <>
+                    <Area type="monotone" dataKey="總資產" stroke="var(--ink)" strokeWidth={1.5} fill="url(#gA)" strokeOpacity={0.6} dot={{ r: 3, fill: 'var(--ink)' }} />
+                    <Area type="monotone" dataKey="淨資產" stroke="var(--accent)" strokeWidth={2} fill="url(#gN)" dot={{ r: 3, fill: 'var(--accent)' }} />
+                    <Line type="monotone" dataKey="總負債" stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
+                  </> : <>
+                    <Area type="monotone" dataKey="流動資金" stroke="#22c55e" strokeWidth={2} fill="none" dot={{ r: 3, fill: '#22c55e' }} />
+                    <Area type="monotone" dataKey="投資" stroke="#818cf8" strokeWidth={2} fill="none" dot={{ r: 3, fill: '#818cf8' }} />
+                  </>}
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -402,9 +494,9 @@ export default function StatementsPage() {
                     <div key={s.date} className="flex items-center justify-between text-xs">
                       <span style={{ color: D.muted }}>{s.date}</span>
                       <div className="flex gap-4">
-                        <span style={{ color: D.muted }}>資產 {fmt(s.totalAssets)}</span>
-                        <span style={{ color: D.muted }}>負債 {fmt(s.totalLiabilities)}</span>
-                        <span className="font-medium" style={{ color: D.accent }}>淨值 {fmt(s.netWorth)}</span>
+                        <span style={{ color: D.muted }}>資產 {maskVal(fmt(s.totalAssets))}</span>
+                        <span style={{ color: D.muted }}>負債 {maskVal(fmt(s.totalLiabilities))}</span>
+                        <span className="font-medium" style={{ color: D.accent }}>淨值 {maskVal(fmt(s.netWorth))}</span>
                         <button onClick={() => {
                           if (!userIdRef.current) return
                           const u = snapshots.filter(x => x.date !== s.date)
@@ -426,7 +518,7 @@ export default function StatementsPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
                 <XAxis dataKey="year" tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
                 <YAxis tickFormatter={v => `${(v / 10000).toFixed(0)}萬`} tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(v: any) => fmt(Math.abs(Number(v)))} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
+                <Tooltip formatter={(v: unknown) => fmt(Math.abs(Number(v)))} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="現金"   stackId="a" fill="var(--ink)" fillOpacity={0.7} />
                 <Bar dataKey="投資"   stackId="a" fill="var(--ink)" fillOpacity={0.5} />
@@ -445,7 +537,7 @@ export default function StatementsPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
                 <XAxis dataKey="year" tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
                 <YAxis tickFormatter={v => `${(v / 10000).toFixed(0)}萬`} tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(v: any) => fmt(Number(v))} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
+                <Tooltip formatter={(v: unknown) => fmt(Number(v))} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Line type="monotone" dataKey="總收入" stroke="var(--ink)"    strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="總支出" stroke="var(--muted)"  strokeWidth={2} dot={false} />
@@ -460,8 +552,9 @@ export default function StatementsPage() {
               {(['bs', 'pl'] as const).map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)}
                   className="px-4 py-1.5 rounded-xl text-xs font-medium transition-opacity hover:opacity-70"
-                  style={{ backgroundColor: activeTab === tab ? D.ink : D.bg, color: activeTab === tab ? D.bg : D.muted }}
-                >{tab === 'bs' ? '資產負債表' : '損益表'}</button>
+                  style={{ backgroundColor: activeTab === tab ? D.ink : D.bg, color: activeTab === tab ? D.bg : D.muted }}>
+                  {tab === 'bs' ? '資產負債表' : '損益表'}
+                </button>
               ))}
             </div>
             <div className="overflow-x-auto">
@@ -520,31 +613,73 @@ export default function StatementsPage() {
         </div>
       </div>
 
-      {/* ── Add / Edit Modal ── */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      {/* ── Modal: Step 1 — Pick category ── */}
+      {modalStep === 1 && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
           style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
-          onClick={e => { if (e.target === e.currentTarget) setModalOpen(false) }}>
+          onClick={e => { if (e.target === e.currentTarget) setModalStep(0) }}>
           <div className="w-full max-w-sm rounded-2xl p-6" style={{ backgroundColor: D.surface }}>
-            <p className="text-sm font-semibold mb-4" style={{ color: D.ink }}>
-              {editId ? '編輯項目' : '新增項目'}
-            </p>
+            <div className="flex items-center justify-between mb-5">
+              <p className="text-sm font-semibold" style={{ color: D.ink }}>新增帳戶</p>
+              <button onClick={() => setModalStep(0)} className="text-lg transition-opacity hover:opacity-50" style={{ color: D.muted }}>×</button>
+            </div>
+            <div className="space-y-2">
+              {CATEGORIES.map(c => (
+                <button key={c.key}
+                  onClick={() => { setForm(f => ({ ...f, category: c.key })); setModalStep(2) }}
+                  className="w-full px-4 py-3.5 rounded-xl text-sm font-medium text-left transition-opacity hover:opacity-80"
+                  style={{ backgroundColor: D.bg, color: D.ink, borderLeft: `4px solid ${c.color}` }}>
+                  {c.label}
+                  <span className="ml-2 text-xs font-normal" style={{ color: D.muted }}>{c.hint}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
-            {/* Category selector */}
-            <div className="mb-3">
-              <label className="text-xs block mb-1" style={{ color: D.muted }}>類別</label>
-              <div className="flex flex-wrap gap-1.5">
-                {CATEGORIES.map(c => (
-                  <button key={c.key} onClick={() => setForm(f => ({ ...f, category: c.key }))}
-                    className="px-3 py-1 rounded-lg text-xs transition-opacity hover:opacity-70"
-                    style={{ backgroundColor: form.category === c.key ? c.color : D.bg, color: form.category === c.key ? '#fff' : D.muted }}>
-                    {c.label}
-                  </button>
-                ))}
-              </div>
+      {/* ── Modal: Step 2 — Fill form ── */}
+      {modalStep === 2 && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+          onClick={e => { if (e.target === e.currentTarget) setModalStep(0) }}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ backgroundColor: D.surface }}>
+            <div className="flex items-center gap-2 mb-5">
+              {!editId && (
+                <button onClick={() => setModalStep(1)}
+                  className="text-sm transition-opacity hover:opacity-50" style={{ color: D.muted }}>←</button>
+              )}
+              <p className="text-sm font-semibold flex-1" style={{ color: D.ink }}>
+                {editId ? '編輯項目' : `新增${form.category}`}
+              </p>
+              <button onClick={() => setModalStep(0)} className="text-lg transition-opacity hover:opacity-50" style={{ color: D.muted }}>×</button>
             </div>
 
-            {/* Name */}
+            {/* Category badge */}
+            {!editId && (
+              <div className="mb-4 px-3 py-1.5 rounded-lg inline-flex items-center gap-2"
+                style={{ backgroundColor: D.bg }}>
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CATEGORIES.find(c => c.key === form.category)?.color }} />
+                <span className="text-xs" style={{ color: D.ink }}>{form.category}</span>
+              </div>
+            )}
+
+            {/* Edit: category selector */}
+            {editId && (
+              <div className="mb-3">
+                <label className="text-xs block mb-1" style={{ color: D.muted }}>類別</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {CATEGORIES.map(c => (
+                    <button key={c.key} onClick={() => setForm(f => ({ ...f, category: c.key }))}
+                      className="px-3 py-1 rounded-lg text-xs transition-opacity hover:opacity-70"
+                      style={{ backgroundColor: form.category === c.key ? c.color : D.bg, color: form.category === c.key ? '#fff' : D.muted }}>
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="mb-3">
               <label className="text-xs block mb-1" style={{ color: D.muted }}>名稱</label>
               <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -553,7 +688,6 @@ export default function StatementsPage() {
                 style={{ backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }} />
             </div>
 
-            {/* Amount */}
             <div className="mb-3">
               <label className="text-xs block mb-1" style={{ color: D.muted }}>金額 (NT$)</label>
               <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
@@ -562,7 +696,6 @@ export default function StatementsPage() {
                 style={{ backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }} />
             </div>
 
-            {/* Note */}
             <div className="mb-5">
               <label className="text-xs block mb-1" style={{ color: D.muted }}>備註（選填）</label>
               <input type="text" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
@@ -572,7 +705,7 @@ export default function StatementsPage() {
             </div>
 
             <div className="flex gap-2">
-              <button onClick={() => setModalOpen(false)}
+              <button onClick={() => setModalStep(0)}
                 className="flex-1 py-2 rounded-xl text-xs transition-opacity hover:opacity-70"
                 style={{ backgroundColor: D.bg, color: D.muted }}>取消</button>
               <button onClick={saveItem} disabled={saving || !form.name.trim()}
@@ -582,12 +715,9 @@ export default function StatementsPage() {
               </button>
             </div>
 
-            {/* Delete button for edit mode */}
             {editId && (
-              <button onClick={async () => {
-                await deleteItem(editId)
-                setModalOpen(false)
-              }} className="w-full mt-2 py-2 rounded-xl text-xs transition-opacity hover:opacity-70"
+              <button onClick={async () => { await deleteItem(editId); setModalStep(0) }}
+                className="w-full mt-2 py-2 rounded-xl text-xs transition-opacity hover:opacity-70"
                 style={{ color: '#ef4444' }}>刪除此項目</button>
             )}
           </div>
