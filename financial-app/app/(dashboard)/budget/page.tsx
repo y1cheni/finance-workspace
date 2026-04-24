@@ -13,37 +13,51 @@ interface Layer     { id: string; label: string; sublabel: string; suggested: nu
 /* ─── Defaults ─── */
 const DEFAULT_LAYERS: Layer[] = [
   {
-    id: 'survive', label: '生存層', sublabel: '經常消費性 / 風險性', suggested: 55,
+    id: 'essential', label: '生存層', sublabel: '生存性 / 經常消費', suggested: 50,
     categories: [
-      { id: 'eat',      label: '飲食',     monthly: 9000 },
-      { id: 'live',     label: '居住',     monthly: 588  },
-      { id: 'car',      label: '交通/車',  monthly: 6000 },
-      { id: 'medical',  label: '醫療保健', monthly: 3000 },
-      { id: 'tax',      label: '稅費',     monthly: 0    },
-      { id: 'insurance',label: '保險',     monthly: 0    },
+      { id: 'food',      label: '食',   monthly: 12600 },
+      { id: 'housing',   label: '住',   monthly: 5576  },
+      { id: 'transport', label: '交通', monthly: 3503  },
+      { id: 'medical',   label: '醫療', monthly: 3442  },
+      { id: 'insurance', label: '保險', monthly: 0     },
+      { id: 'tax',       label: '稅務', monthly: 0     },
     ],
   },
   {
-    id: 'experience', label: '體驗層', sublabel: '財務性 / 教育性', suggested: 30,
+    id: 'debt', label: '債務層', sublabel: '債務還款', suggested: 20,
     categories: [
-      { id: 'invest',       label: '投資儲蓄', monthly: 15000 },
-      { id: 'debt',         label: '還債',     monthly: 2000  },
-      { id: 'subscription', label: '訂閱工具', monthly: 4000  },
-      { id: 'edu',          label: '教育進修', monthly: 2000  },
+      { id: 'debt_repay', label: '債務還款', monthly: 15000 },
     ],
   },
   {
-    id: 'social', label: '社交層', sublabel: '娛樂性', suggested: 15,
+    id: 'savings', label: '儲蓄投資層', sublabel: '儲蓄性 / 投資性', suggested: 30,
     categories: [
-      { id: 'play',     label: '娛樂', monthly: 0    },
-      { id: 'clothing', label: '服飾', monthly: 2700 },
-      { id: 'chore',    label: '雜支', monthly: 2000 },
+      { id: 'emergency',   label: '緊急金',      monthly: 10000 },
+      { id: 'sinking',     label: '儲蓄專戶',    monthly: 0     },
+      { id: 'invest',      label: '投資',        monthly: 0     },
+      { id: 'retirement',  label: '退休',        monthly: 0     },
+      { id: 'children',    label: '子女教育、贈與', monthly: 0  },
+    ],
+  },
+  {
+    id: 'self', label: '自我實現層', sublabel: '教育性', suggested: 10,
+    categories: [
+      { id: 'edu',          label: '教育', monthly: 833  },
+      { id: 'subscription', label: '訂閱', monthly: 4000 },
+    ],
+  },
+  {
+    id: 'social', label: '社交娛樂層', sublabel: '娛樂性 / 社交性', suggested: 10,
+    categories: [
+      { id: 'entertainment', label: '娛樂',    monthly: 1000 },
+      { id: 'clothing',      label: '衣服',    monthly: 2600 },
+      { id: 'misc',          label: '其他、彈性', monthly: 2000 },
     ],
   },
 ]
 
-const LAYER_COLORS = ['var(--ink)', 'var(--accent)', 'var(--muted)']
-const STORAGE_KEY = 'fintool-budget-layers-v2'
+const LAYER_COLORS = ['var(--ink)', '#C07030', 'var(--accent)', 'var(--muted)', '#888888']
+const STORAGE_KEY = 'fintool-budget-layers-v3'
 
 function loadLayers(): Layer[] {
   if (typeof window === 'undefined') return DEFAULT_LAYERS
