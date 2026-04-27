@@ -1,12 +1,16 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import {
+  ComposedChart, BarChart, Bar, Line, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
+} from 'recharts'
 import { createClient } from '@/lib/supabase'
 import { D } from '@/lib/design'
 import CsvImportModal from '@/components/CsvImportModal'
 
 const INCOME_CATS  = ['薪資', '獎金', '投資收益', '副業', '其他收入']
 const EXPENSE_CATS = ['餐飲', '交通', '居住', '訂閱', '教育', '娛樂', '醫療', '服飾', '雜支']
+const CAT_COLORS   = ['#1c1c1e','#4f9cf9','#8b5cf6','#f59e0b','#10b981','#ef4444','#6366f1','#f97316','#06b6d4']
 
 interface Txn {
   id: string
@@ -78,10 +82,14 @@ export default function CashflowPage() {
       const d = new Date(t.date)
       return d.getFullYear() === viewYear && d.getMonth() + 1 === m
     })
+    const inc = mt.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+    const exp = mt.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
     return {
       month: `${m}月`,
-      收入: mt.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0),
-      支出: mt.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0),
+      收入: inc,
+      支出: exp,
+      淨額: inc - exp,
+      儲蓄率: inc > 0 ? Math.round((inc - exp) / inc * 100) : 0,
     }
   })
 
@@ -146,6 +154,7 @@ export default function CashflowPage() {
 
       <div className="flex flex-col lg:flex-row gap-6">
         <div className="flex-1 space-y-4">
+          {/* 年度收支趨勢 + 淨額折線 */}
           <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
             <div className="flex items-center justify-between mb-4">
               <p className="text-xs" style={{ color: D.muted }}>{viewYear} 年度收支趨勢</p>
@@ -154,8 +163,8 @@ export default function CashflowPage() {
                 <button onClick={() => setViewYear(y => y + 1)} className="text-xs transition-opacity hover:opacity-50" style={{ color: D.muted }}>{viewYear+1} →</button>
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={monthlyChart} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart data={monthlyChart} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
                 <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
                 <YAxis tickFormatter={v => `${(v/1000).toFixed(0)}k`}
@@ -163,12 +172,42 @@ export default function CashflowPage() {
                 <Tooltip formatter={(v: any) => fmt(Number(v))}
                   contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="收入" fill="var(--ink)"   fillOpacity={0.8} radius={[3,3,0,0]} />
-                <Bar dataKey="支出" fill="var(--accent)" fillOpacity={0.5} radius={[3,3,0,0]} />
+                <ReferenceLine y={0} stroke="var(--subtle)" />
+                <Bar dataKey="收入" fill="var(--ink)"    fillOpacity={0.75} radius={[3,3,0,0]} />
+                <Bar dataKey="支出" fill="var(--accent)" fillOpacity={0.5}  radius={[3,3,0,0]} />
+                <Line type="monotone" dataKey="淨額" stroke="var(--accent)" strokeWidth={2}
+                  dot={{ r: 3, fill: 'var(--accent)' }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* 儲蓄率趨勢 */}
+          <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs" style={{ color: D.muted }}>{viewYear} 各月儲蓄率（%）</p>
+              <p className="text-xs font-semibold" style={{ color: savingsRate >= 20 ? D.accent : D.muted }}>
+                本月 {savingsRate.toFixed(1)}%
+              </p>
+            </div>
+            <ResponsiveContainer width="100%" height={120}>
+              <BarChart data={monthlyChart} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
+                <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={v => `${v}%`} tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+                <Tooltip formatter={(v: any) => `${v}%`}
+                  contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
+                <ReferenceLine y={20} stroke="var(--accent)" strokeDasharray="4 2" strokeOpacity={0.6} label={{ value: '20%', fontSize: 10, fill: 'var(--muted)', position: 'right' }} />
+                <Bar dataKey="儲蓄率" radius={[3,3,0,0]}>
+                  {monthlyChart.map((entry, i) => (
+                    <Cell key={i} fill={entry.儲蓄率 >= 20 ? 'var(--accent)' : entry.儲蓄率 >= 0 ? 'var(--muted)' : 'var(--danger)'}
+                      fillOpacity={0.75} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
 
+          {/* 本月明細 */}
           <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
             <p className="text-xs mb-3" style={{ color: D.muted }}>本月明細</p>
             <div className="overflow-x-auto">
@@ -213,26 +252,44 @@ export default function CashflowPage() {
           </div>
         </div>
 
-        <div className="lg:w-64 shrink-0">
+        {/* 右側：支出類別圓餅圖 */}
+        <div className="lg:w-64 shrink-0 space-y-4">
           <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
             <p className="text-xs mb-3" style={{ color: D.muted }}>本月支出類別</p>
             {catExpense.length === 0
               ? <p className="text-xs py-4 text-center" style={{ color: D.muted }}>尚無支出</p>
-              : catExpense.map(c => (
-                <div key={c.cat} className="mb-3">
-                  <div className="flex justify-between text-xs mb-1" style={{ color: D.muted }}>
-                    <span>{c.cat}</span>
-                    <span>{fmt(c.amount)}</span>
+              : (
+                <>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie data={catExpense.map(c => ({ name: c.cat, value: c.amount }))}
+                        cx="50%" cy="50%" outerRadius={70} innerRadius={32} dataKey="value" paddingAngle={2}>
+                        {catExpense.map((_, i) => (
+                          <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v: any) => fmt(Number(v))}
+                        contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="space-y-2 mt-2">
+                    {catExpense.map((c, i) => (
+                      <div key={c.cat} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: CAT_COLORS[i % CAT_COLORS.length] }} />
+                          <span style={{ color: D.muted }}>{c.cat}</span>
+                        </div>
+                        <div className="text-right">
+                          <span style={{ color: D.ink }}>{fmt(c.amount)}</span>
+                          <span className="ml-1" style={{ color: D.muted, opacity: 0.6 }}>
+                            {((c.amount / monthExpense) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="h-1 rounded-full" style={{ backgroundColor: D.bg }}>
-                    <div className="h-1 rounded-full" style={{
-                      width: `${Math.min(100, (c.amount / monthExpense) * 100)}%`,
-                      backgroundColor: D.accent,
-                      opacity: 0.7,
-                    }} />
-                  </div>
-                </div>
-              ))
+                </>
+              )
             }
           </div>
         </div>
