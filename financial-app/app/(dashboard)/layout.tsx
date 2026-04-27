@@ -11,6 +11,7 @@ import type { User } from '@supabase/supabase-js'
 const ADMIN_EMAIL = 'yichenjasperliao@gmail.com'
 
 const NAV_ICONS: Record<string, string> = {
+  '/dashboard':     '⊞',
   '/compound':      '∿',
   '/retirement':    '◎',
   '/statements':    '▦',
@@ -30,6 +31,7 @@ const NAV_ICONS: Record<string, string> = {
 interface NavGroup { id: string; label: string; hrefs: string[] }
 
 const DEFAULT_GROUPS: NavGroup[] = [
+  { id: 'overview', label: '總覽',     hrefs: ['/dashboard'] },
   { id: 'calc',     label: '計算工具', hrefs: ['/compound', '/retirement', '/budget', '/tax', '/goals', '/housing'] },
   { id: 'assets',   label: '資產負債', hrefs: ['/statements', '/portfolio', '/debts'] },
   { id: 'daily',    label: '日常管理', hrefs: ['/cashflow', '/subscriptions'] },
@@ -37,7 +39,7 @@ const DEFAULT_GROUPS: NavGroup[] = [
 ]
 
 const ALL_HREFS = DEFAULT_GROUPS.flatMap(g => g.hrefs)
-const GROUPS_KEY = 'nav-groups-v2'
+const GROUPS_KEY = 'nav-groups-v3'
 
 function loadGroups(): NavGroup[] {
   if (typeof window === 'undefined') return DEFAULT_GROUPS
@@ -133,6 +135,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   /* ── NAV labels ── */
   const NAV: Record<string, string> = {
+    '/dashboard':     '總覽',
     '/compound':      T.nav.compound,
     '/retirement':    T.nav.retirement,
     '/statements':    T.nav.statements,

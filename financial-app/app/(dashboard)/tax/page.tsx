@@ -1,5 +1,9 @@
 'use client'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  Cell, ResponsiveContainer,
+} from 'recharts'
 import { D } from '@/lib/design'
 import FormulaPanel from '@/components/FormulaPanel'
 import { readStore } from '@/lib/shared-store'
@@ -22,9 +26,7 @@ const TAX_FORMULAS = [
   {
     name: '薪資所得扣除額',
     formula: '薪資扣除額 = min(薪資所得, 218,000)',
-    vars: [
-      { sym: '218,000', desc: '2025 年薪資所得特別扣除額上限' },
-    ],
+    vars: [{ sym: '218,000', desc: '2025 年薪資所得特別扣除額上限' }],
   },
   {
     name: '房租支出扣除額',
@@ -39,8 +41,13 @@ const BRACKETS = [
   { limit: 4_980_000, rate: 0.30, deduct: 413_700  },
   { limit: Infinity,  rate: 0.40, deduct: 911_700  },
 ]
-const OVERSEAS_THRESHOLD = 6_700_000
 
+const BRACKET_LABELS = ['5%', '12%', '20%', '30%', '40%']
+const BRACKET_RANGES = ['0–59萬', '59–133萬', '133–266萬', '266–498萬', '498萬+']
+// Color ramp: green → yellow → red
+const BRACKET_COLORS = ['#22c55e', '#84cc16', '#f59e0b', '#f97316', '#ef4444']
+
+const OVERSEAS_THRESHOLD = 6_700_000
 const STD_DEDUCTION    = 131_000
 const SALARY_DEDUCTION = 218_000
 
@@ -106,6 +113,42 @@ export default function TaxPage() {
   }
   usePageParams('tax', currentParams, handleLoad)
 
+  // ── Chart data ──────────────────────────────────────────────────────────────
+
+  // Income split across brackets
+  const bracketData = useMemo(() => {
+    const data = BRACKETS.map((b, i) => {
+      const prevLimit = i === 0 ? 0 : BRACKETS[i - 1].limit
+      const cap = b.limit === Infinity ? netIncome : b.limit
+      const amtInBracket = Math.max(0, Math.min(netIncome, cap) - prevLimit)
+      return {
+        name: BRACKET_LABELS[i],
+        range: BRACKET_RANGES[i],
+        金額: Math.round(amtInBracket),
+        稅額: Math.round(amtInBracket * b.rate),
+        rate: b.rate,
+        isActive: netIncome > prevLimit,
+        color: BRACKET_COLORS[i],
+      }
+    }).filter(b => b.金額 > 0 || b.isActive)
+    return data
+  }, [netIncome])
+
+  // Deduction breakdown
+  const deductData = useMemo(() => {
+    const items: { name: string; value: number }[] = [
+      { name: useItemized ? '列舉扣除' : '標準扣除', value: basicDeduct },
+      { name: '薪資特別扣除',                         value: salaryDeduct },
+    ]
+    if (dependents > 0) items.push({ name: `撫養 ×${dependents}`, value: dependDeduct })
+    if (under6 > 0)     items.push({ name: `幼兒學前 ×${under6}`, value: childDeduct })
+    if (rent > 0)       items.push({ name: '房租扣除',             value: rentDeduct })
+    if (disability)     items.push({ name: '身心障礙',             value: disabiDeduct })
+    return items.filter(d => d.value > 0).sort((a, b) => b.value - a.value)
+  }, [basicDeduct, salaryDeduct, dependDeduct, childDeduct, rentDeduct, disabiDeduct,
+      useItemized, dependents, under6, rent, disability])
+
+  const tooltipStyle = { backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }
   const inputClass = "w-full rounded-xl px-3 py-2 text-xs focus:outline-none"
   const inputStyle = { backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }
 
@@ -127,6 +170,7 @@ export default function TaxPage() {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
+        {/* Sidebar inputs */}
         <aside className="lg:w-72 shrink-0 space-y-4">
           <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
             <p className="text-xs mb-3" style={{ color: D.muted }}>所得來源</p>
@@ -152,35 +196,30 @@ export default function TaxPage() {
                 onChange={e => setDependents(Number(e.target.value))}
                 className={inputClass} style={inputStyle} />
             </div>
-
             <div className="mb-3">
               <label className="text-xs block mb-1" style={{ color: D.muted }}>6歲以下子女數</label>
               <input type="number" value={under6} min={0} max={5}
                 onChange={e => setUnder6(Number(e.target.value))}
                 className={inputClass} style={inputStyle} />
             </div>
-
             <div className="mb-3">
               <label className="text-xs block mb-1" style={{ color: D.muted }}>房租支出 (NT$)</label>
               <input type="number" value={rent} step={1000}
                 onChange={e => setRent(Number(e.target.value))}
                 className={inputClass} style={inputStyle} />
             </div>
-
             <label className="flex items-center gap-2 mb-3 cursor-pointer">
               <input type="checkbox" checked={disability}
                 onChange={e => setDisability(e.target.checked)}
                 className="rounded" style={{ accentColor: D.accent }} />
               <span className="text-xs" style={{ color: D.muted }}>身心障礙扣除額</span>
             </label>
-
             <label className="flex items-center gap-2 mb-3 cursor-pointer">
               <input type="checkbox" checked={useItemized}
                 onChange={e => setItemized(e.target.checked)}
                 className="rounded" style={{ accentColor: D.accent }} />
               <span className="text-xs" style={{ color: D.muted }}>使用列舉扣除額</span>
             </label>
-
             {useItemized && (
               <div className="mb-3">
                 <label className="text-xs block mb-1" style={{ color: D.muted }}>列舉扣除額合計 (NT$)</label>
@@ -192,7 +231,9 @@ export default function TaxPage() {
           </div>
         </aside>
 
+        {/* Right content */}
         <div className="flex-1 space-y-4">
+          {/* Stat cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: '應繳稅額', value: fmt(tax),          accent: true  },
@@ -207,6 +248,99 @@ export default function TaxPage() {
             ))}
           </div>
 
+          {/* Income in brackets chart */}
+          <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+            <p className="text-xs mb-1" style={{ color: D.muted }}>課稅淨額 × 級距分佈</p>
+            <p className="text-xs mb-4" style={{ color: D.muted, opacity: 0.6 }}>
+              每個柱代表落入該稅率級距的金額，顏色深淺對應稅率高低
+            </p>
+            {netIncome === 0 ? (
+              <p className="text-xs py-4 text-center" style={{ color: D.muted }}>輸入所得後顯示</p>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={bracketData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
+                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+                    <YAxis tickFormatter={v => `${(v / 10000).toFixed(0)}萬`}
+                      tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      formatter={(v: any, name: any) => [fmt(Number(v)), name]}
+                      contentStyle={tooltipStyle}
+                      labelFormatter={(label, payload) => {
+                        const entry = payload?.[0]?.payload
+                        return entry ? `${label} — ${entry.range}` : label
+                      }}
+                    />
+                    <Bar dataKey="金額" radius={[4, 4, 0, 0]}>
+                      {bracketData.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} fillOpacity={0.85} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+                {/* Inline tax per bracket */}
+                <div className="flex flex-wrap gap-3 mt-3">
+                  {bracketData.filter(b => b.金額 > 0).map((b, i) => (
+                    <div key={i} className="flex items-center gap-1.5 text-xs" style={{ color: D.muted }}>
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
+                      <span>{b.name} × {fmt(b.金額)} = <strong style={{ color: D.ink }}>{fmt(b.稅額)}</strong></span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Deduction breakdown */}
+          {deductData.length > 0 && (
+            <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+              <p className="text-xs mb-4" style={{ color: D.muted }}>扣除額拆解（合計 {fmt(totalDeduct)}）</p>
+              <ResponsiveContainer width="100%" height={Math.max(120, deductData.length * 38)}>
+                <BarChart data={deductData} layout="vertical"
+                  margin={{ top: 0, right: 60, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} horizontal={false} />
+                  <XAxis type="number" tickFormatter={v => `${(v / 10000).toFixed(0)}萬`}
+                    tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="name" width={80}
+                    tick={{ fontSize: 11, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(v: any) => fmt(Number(v))} contentStyle={tooltipStyle} />
+                  <Bar dataKey="value" fill="var(--ink)" fillOpacity={0.75} radius={[0, 4, 4, 0]}
+                    label={{
+                      position: 'right', fontSize: 10, fill: 'var(--muted)',
+                      formatter: (v: any) => fmt(v),
+                    }} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Effective tax rate visual */}
+          <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs" style={{ color: D.muted }}>有效稅率 {pct(effectiveRate)}</p>
+              <p className="text-xs" style={{ color: D.muted }}>
+                適用級距 <strong style={{ color: D.accent }}>{
+                  BRACKET_LABELS[BRACKETS.findIndex((b, i) => {
+                    const prev = i === 0 ? 0 : BRACKETS[i - 1].limit
+                    return netIncome > prev && netIncome <= b.limit
+                  })] ?? '—'
+                }</strong>
+              </p>
+            </div>
+            <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: D.bg }}>
+              <div className="h-2 rounded-full transition-all"
+                style={{
+                  width: `${Math.min(100, effectiveRate * 100 / 0.4)}%`,
+                  backgroundColor: effectiveRate > 0.2 ? '#ef4444' : effectiveRate > 0.1 ? '#f59e0b' : D.accent,
+                }} />
+            </div>
+            <div className="flex justify-between text-xs mt-1" style={{ color: D.muted }}>
+              <span>0%</span><span>20%</span><span>40%</span>
+            </div>
+          </div>
+
+          {/* Calculation detail */}
           <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
             <p className="text-xs mb-3" style={{ color: D.muted }}>計算明細</p>
             <Row label="薪資所得" value={fmt(salary)} />
@@ -225,6 +359,7 @@ export default function TaxPage() {
             <Row label="有效稅率" value={pct(effectiveRate)} />
           </div>
 
+          {/* Bracket reference table */}
           <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
             <p className="text-xs mb-3" style={{ color: D.muted }}>2025 累進稅率級距</p>
             <table className="w-full text-xs">

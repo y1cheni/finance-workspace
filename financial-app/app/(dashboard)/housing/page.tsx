@@ -96,6 +96,44 @@ const FORMULAS = [
   },
 ]
 
+/* ─── Rent vs Buy helpers ─── */
+function rentVsBuyData(params: {
+  housePrice: number; downPmt: number; principal: number
+  monthlyMortgage: number; monthlyRunning: number; monthlyRent: number
+  mortgageRate: number; appreciationRate: number; opportunityRate: number; years: number
+}) {
+  const { housePrice, downPmt, principal, monthlyMortgage, monthlyRunning,
+          monthlyRent, mortgageRate, appreciationRate, opportunityRate, years } = params
+  const mr = mortgageRate / 100 / 12
+  const or = opportunityRate / 100 / 12
+  let mortgageBal = principal
+  let rentPortfolio = downPmt                            // invest down payment
+  const monthlySurplus = (monthlyMortgage + monthlyRunning) - monthlyRent
+
+  const rows: { year: string; 買房淨值: number; 租房淨值: number }[] = [
+    { year: 'Y0', 買房淨值: Math.round(downPmt / 10000), 租房淨值: Math.round(downPmt / 10000) },
+  ]
+  for (let yr = 1; yr <= years; yr++) {
+    for (let m = 0; m < 12; m++) {
+      const interest = mortgageBal * mr
+      mortgageBal = Math.max(0, mortgageBal - (monthlyMortgage - interest))
+    }
+    rentPortfolio = rentPortfolio * Math.pow(1 + or, 12)
+    if (monthlySurplus >= 0) {
+      rentPortfolio += monthlySurplus * ((Math.pow(1 + or, 12) - 1) / (or || 0.001))
+    } else {
+      rentPortfolio = Math.max(0, rentPortfolio + monthlySurplus * 12)
+    }
+    const homeValue = housePrice * 10000 * Math.pow(1 + appreciationRate / 100, yr)
+    rows.push({
+      year: `Y${yr}`,
+      買房淨值: Math.round((homeValue - mortgageBal) / 10000),
+      租房淨值: Math.round(Math.max(0, rentPortfolio) / 10000),
+    })
+  }
+  return rows
+}
+
 /* ─── Main ─── */
 export default function HousingPage() {
   /* Mortgage inputs */
@@ -109,6 +147,12 @@ export default function HousingPage() {
   const [utility, setUtility] = useState(2000)
   const [repair,  setRepair]  = useState(500)
   const [tax,     setTax]     = useState(6000) // annual
+
+  /* Rent vs buy */
+  const [monthlyRent,     setMonthlyRent]     = useState(20000)
+  const [appreciationRate, setAppreciationRate] = useState(2)
+  const [opportunityRate,  setOpportunityRate]  = useState(6)
+  const [compareYears,     setCompareYears]     = useState(20)
 
   /* Child */
   const [numChildren, setNumChildren] = useState(1)
@@ -332,6 +376,89 @@ export default function HousingPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Section 3: Rent vs Buy ── */}
+      <div className="mb-6">
+        <p className="text-xs font-medium mb-3" style={{ color: D.muted }}>租 vs 買：{compareYears} 年後財富比較</p>
+        <div className="flex flex-col lg:flex-row gap-4">
+          {/* Rent vs Buy inputs */}
+          <div className="lg:w-64 shrink-0 rounded-2xl p-5 space-y-1" style={{ backgroundColor: D.surface }}>
+            <Slider label="月租金" value={monthlyRent} min={5000} max={80000} step={1000}
+              format={fmt} onChange={setMonthlyRent} />
+            <Slider label="房價年增值率" value={appreciationRate} min={0} max={8} step={0.1}
+              format={v => `${v.toFixed(1)}%/年`} onChange={setAppreciationRate} />
+            <Slider label="投資機會成本" value={opportunityRate} min={0} max={15} step={0.1}
+              format={v => `${v.toFixed(1)}%/年`} onChange={setOpportunityRate} />
+            <Slider label="比較年限" value={compareYears} min={5} max={40} step={1}
+              format={v => `${v} 年`} onChange={setCompareYears} />
+            <p className="text-xs pt-2" style={{ color: D.muted }}>
+              機會成本：若將頭期款改為投資，每年預期報酬率
+            </p>
+          </div>
+
+          {/* Rent vs Buy chart */}
+          <div className="flex-1 space-y-4">
+            {(() => {
+              const rvbData = rentVsBuyData({
+                housePrice, downPmt: principal === 0 ? housePrice * 10000 * downPct / 100 : housePrice * 10000 * downPct / 100,
+                principal, monthlyMortgage: monthly, monthlyRunning,
+                mortgageRate: rate, appreciationRate, opportunityRate,
+                monthlyRent, years: compareYears,
+              })
+              const lastRow = rvbData[rvbData.length - 1]
+              const buyWins = lastRow.買房淨值 > lastRow.租房淨值
+              return (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: '買房 — 月支出', value: fmt(monthly + monthlyRunning) },
+                      { label: '租房 — 月支出', value: fmt(monthlyRent) },
+                      { label: `${compareYears} 年後較優`,
+                        value: buyWins ? '買房' : '租房',
+                        accent: true },
+                    ].map(m => (
+                      <div key={m.label} className="rounded-2xl p-4" style={{ backgroundColor: D.surface }}>
+                        <p className="text-xs mb-1" style={{ color: D.muted }}>{m.label}</p>
+                        <p className="text-base font-bold" style={{ color: m.accent ? D.accent : D.ink }}>{m.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs" style={{ color: D.muted }}>淨值比較（萬）— 頭期款 {fmtW(housePrice * 10000 * downPct / 100)}</p>
+                      {lastRow && (
+                        <p className="text-xs" style={{ color: D.accent }}>
+                          {compareYears}年後差距 {Math.abs(lastRow.買房淨值 - lastRow.租房淨值)} 萬（{buyWins ? '買房多' : '租房多'}）
+                        </p>
+                      )}
+                    </div>
+                    <p className="text-xs mb-4" style={{ color: D.muted, opacity: 0.6 }}>
+                      租房：頭期款投入市場 + 月省差額再投資　買房：房屋淨值（市值 − 剩餘貸款）
+                    </p>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <LineChart data={rvbData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
+                        <XAxis dataKey="year" tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false}
+                          interval="preserveStartEnd" />
+                        <YAxis tickFormatter={v => `${v}萬`} tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+                        <Tooltip formatter={(v: any) => `${v} 萬`}
+                          contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Line type="monotone" dataKey="買房淨值" stroke="var(--ink)" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="租房淨值" stroke="var(--accent)" strokeWidth={2} dot={false} strokeDasharray="5 3" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                    <p className="text-xs mt-3" style={{ color: D.muted }}>
+                      注意：此模型為簡化試算，不含仲介費、裝潢、稅費、空置期等一次性成本。
+                    </p>
+                  </div>
+                </>
+              )
+            })()}
           </div>
         </div>
       </div>

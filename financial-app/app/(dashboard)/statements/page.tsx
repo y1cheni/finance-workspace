@@ -1,6 +1,6 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
-import { AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { AreaChart, Area, LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip,
          Legend, ResponsiveContainer } from 'recharts'
 import { generateStatements } from '@/lib/statement-engine'
 import ScenarioBar from '@/components/ScenarioBar'
@@ -138,6 +138,26 @@ export default function StatementsPage() {
   const liabilities = totals['負債']    ?? 0
   const totalAssets = cash + investments + realEstate + otherAssets
   const netWorth    = totalAssets - liabilities
+
+  const waterfallData = useMemo(() => {
+    const ASSET_STEPS = [
+      { name: '流動資金', value: cash,        color: '#22c55e' },
+      { name: '投資',    value: investments,  color: '#818cf8' },
+      { name: '固定資產', value: realEstate,   color: '#3b82f6' },
+      { name: '應收款',  value: otherAssets,  color: '#06b6d4' },
+    ]
+    let running = 0
+    const rows = ASSET_STEPS.map(s => {
+      const spacer = running
+      running += s.value
+      return { name: s.name, spacer, bar: s.value, color: s.color }
+    })
+    // liabilities go downward from totalAssets
+    rows.push({ name: '負債', spacer: totalAssets - liabilities, bar: liabilities, color: '#ef4444' })
+    // net worth total bar starting from 0
+    rows.push({ name: '淨資產', spacer: 0, bar: Math.max(0, netWorth), color: 'var(--accent)' })
+    return rows
+  }, [cash, investments, realEstate, otherAssets, liabilities, totalAssets, netWorth])
 
   /* ── Add / Edit / Delete ── */
   const openAdd = (cat?: string) => {
@@ -388,6 +408,41 @@ export default function StatementsPage() {
                 </div>
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Waterfall Chart: Net Worth Composition ── */}
+      {tableReady && (
+        <div className="rounded-2xl p-5 mb-6" style={{ backgroundColor: D.surface }}>
+          <p className="text-xs font-medium mb-1" style={{ color: D.ink }}>淨資產組成（Waterfall）</p>
+          <p className="text-xs mb-4" style={{ color: D.muted }}>各類資產堆疊後扣除負債，得出目前淨資產</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={waterfallData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }} barCategoryGap="20%">
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+              <YAxis tickFormatter={(v: number) => `${(v / 10000).toFixed(0)}萬`} tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+              <Tooltip
+                formatter={(v: any, name: any) => name === 'bar' ? [fmt(v), '金額'] : null}
+                contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }}
+              />
+              <Bar dataKey="spacer" stackId="wf" fill="transparent" isAnimationActive={false} legendType="none" />
+              <Bar dataKey="bar" stackId="wf" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                {waterfallData.map((entry, i) => (
+                  <Cell key={i} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          {/* Legend */}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3">
+            {waterfallData.map(d => (
+              <div key={d.name} className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: d.color }} />
+                <span className="text-xs" style={{ color: D.muted }}>{d.name}</span>
+                <span className="text-xs font-medium" style={{ color: D.ink }}>{fmtShort(d.bar)}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
