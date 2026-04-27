@@ -1,6 +1,9 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { useEffect, useState, useMemo } from 'react'
+import {
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ResponsiveContainer, ReferenceLine,
+} from 'recharts'
 import { createClient } from '@/lib/supabase'
 import { D } from '@/lib/design'
 import { writeStore } from '@/lib/shared-store'
@@ -48,6 +51,29 @@ function simulate(debts: Debt[], extraPayment: number, mode: 'snowball' | 'avala
       })
   }
   return { months: month, totalInterest }
+}
+
+// Monthly total-balance timeline for chart (max 120 months)
+function simulateTimeline(debts: Debt[], extraPayment: number, mode: 'snowball' | 'avalanche'): number[] {
+  if (!debts.length) return []
+  let ds = debts.map(d => ({ ...d, rem: d.remaining }))
+  const balances: number[] = [ds.reduce((s, d) => s + d.rem, 0)]
+  for (let m = 1; m <= 120; m++) {
+    let extra = extraPayment
+    ds = [...ds]
+      .sort((a, b) => mode === 'snowball' ? a.rem - b.rem : b.annual_rate - a.annual_rate)
+      .map(d => {
+        if (d.rem <= 0) return d
+        const interest = d.rem * (d.annual_rate / 100 / 12)
+        const pay = Math.min(d.monthly_payment + extra, d.rem + interest)
+        extra = Math.max(0, d.monthly_payment + extra - (d.rem + interest))
+        return { ...d, rem: Math.max(0, d.rem + interest - pay) }
+      })
+    const total = ds.reduce((s, d) => s + d.rem, 0)
+    balances.push(Math.round(total))
+    if (total <= 0) break
+  }
+  return balances
 }
 
 // Per-debt months to payoff (no extra)
@@ -124,8 +150,19 @@ export default function DebtsPage() {
   const chartData = debts.map(d => ({
     name: d.name,
     剩餘: d.remaining,
-    已還: d.original_amount - d.remaining,
+    已還: Math.max(0, d.original_amount - d.remaining),
   }))
+
+  const sbTimeline = useMemo(() => simulateTimeline(debts, extra, 'snowball'),  [debts, extra])
+  const avTimeline = useMemo(() => simulateTimeline(debts, extra, 'avalanche'), [debts, extra])
+  const timelineData = useMemo(() => {
+    const maxLen = Math.max(sbTimeline.length, avTimeline.length)
+    return Array.from({ length: maxLen }, (_, i) => ({
+      month: i,
+      雪球法: sbTimeline[i] ?? 0,
+      雪崩法: avTimeline[i] ?? 0,
+    }))
+  }, [sbTimeline, avTimeline])
 
   if (loading) return (
     <div className="min-h-[40vh] flex items-center justify-center">
@@ -226,11 +263,11 @@ export default function DebtsPage() {
             </div>
           </div>
 
-          {/* 圖表 */}
+          {/* 負債結構 BarChart */}
           {debts.length > 0 && (
             <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
               <p className="text-xs mb-4" style={{ color: D.muted }}>負債結構</p>
-              <ResponsiveContainer width="100%" height={220}>
+              <ResponsiveContainer width="100%" height={Math.max(160, debts.length * 48)}>
                 <BarChart data={chartData} layout="vertical" margin={{ left: 20, right: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
                   <XAxis type="number" tickFormatter={v => `${(v/10000).toFixed(0)}萬`}
@@ -244,6 +281,55 @@ export default function DebtsPage() {
                   <Bar dataKey="已還" stackId="a" fill="var(--subtle)" />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* 還款曲線 LineChart */}
+          {debts.length > 0 && timelineData.length > 1 && (
+            <div className="rounded-2xl p-5" style={{ backgroundColor: D.surface }}>
+              <div className="flex items-start justify-between mb-1">
+                <p className="text-xs" style={{ color: D.muted }}>還款進度曲線</p>
+                <div className="text-right">
+                  {sbTimeline.length !== avTimeline.length && (
+                    <p className="text-xs" style={{ color: D.accent }}>
+                      雪崩法可提前 {Math.abs(sbTimeline.length - avTimeline.length)} 個月還清
+                    </p>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs mb-4" style={{ color: D.muted, opacity: 0.6 }}>
+                每月剩餘負債總額（月數含額外還款 {extra > 0 ? fmt(extra) : '無'}）
+              </p>
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={timelineData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--subtle)" strokeOpacity={0.4} />
+                  <XAxis dataKey="month" tickFormatter={v => `${v}月`}
+                    tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false}
+                    interval="preserveStartEnd" />
+                  <YAxis tickFormatter={v => `${(v / 10000).toFixed(0)}萬`}
+                    tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    formatter={(v: any) => fmt(Number(v))}
+                    labelFormatter={v => `第 ${v} 個月`}
+                    contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: 12, fontSize: 12 }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <ReferenceLine y={0} stroke="var(--subtle)" />
+                  <Line type="monotone" dataKey="雪球法" stroke="var(--muted)"
+                    strokeWidth={2} dot={false} strokeDasharray="5 3" />
+                  <Line type="monotone" dataKey="雪崩法" stroke="var(--accent)"
+                    strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+              <div className="flex gap-4 mt-3 text-xs" style={{ color: D.muted }}>
+                <span>
+                  雪球法：<strong style={{ color: D.ink }}>{sbTimeline.length - 1} 個月</strong>，
+                  利息 <strong style={{ color: D.danger }}>{fmt(Math.round(sbBase.totalInterest))}</strong>
+                </span>
+                <span>
+                  雪崩法：<strong style={{ color: D.accent }}>{avTimeline.length - 1} 個月</strong>，
+                  利息 <strong style={{ color: D.danger }}>{fmt(Math.round(avBase.totalInterest))}</strong>
+                </span>
+              </div>
             </div>
           )}
         </div>

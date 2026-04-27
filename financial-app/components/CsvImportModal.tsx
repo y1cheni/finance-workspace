@@ -18,6 +18,8 @@ interface Props {
   fields: FieldDef[]
   templateCsv: string
   templateFilename: string
+  /** Lines to skip before the header row (e.g. 1 for M-flow CSV which has a pre-header total row) */
+  skipRows?: number
   /** Return error string to skip this row; null = valid */
   validate?: (record: Record<string, string | number | null>, idx: number) => string | null
   onConfirm: (records: Record<string, string | number | null>[]) => Promise<void>
@@ -79,7 +81,7 @@ function applyRow(
 // ── component ──────────────────────────────────────────────────────────────
 
 export default function CsvImportModal({
-  title, fields, templateCsv, templateFilename, validate, onConfirm, onClose,
+  title, fields, templateCsv, templateFilename, skipRows, validate, onConfirm, onClose,
 }: Props) {
   const [rows,    setRows]    = useState<Record<string, string>[]>([])
   const [headers, setHeaders] = useState<string[]>([])
@@ -96,7 +98,10 @@ export default function CsvImportModal({
     const reader = new FileReader()
     reader.onload = ev => {
       const text = ev.target?.result as string
-      const parsed = parseCsv(text)
+      const processedText = skipRows
+        ? text.split('\n').slice(skipRows).join('\n')
+        : text
+      const parsed = parseCsv(processedText)
       if (!parsed.length) return
       const hdrs = Object.keys(parsed[0])
       setRows(parsed); setHeaders(hdrs)
