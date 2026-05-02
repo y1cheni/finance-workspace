@@ -150,8 +150,8 @@ function Toggle({ value, onChange, color = 'var(--accent)' }: {
   )
 }
 
-function RowToggle({ icon, label, value, onChange, color, highlight }: {
-  icon: string; label: string; value: boolean; onChange: (v: boolean) => void
+function RowToggle({ label, value, onChange, color, highlight }: {
+  label: string; value: boolean; onChange: (v: boolean) => void
   color?: string; highlight?: boolean
 }) {
   return (
@@ -161,7 +161,6 @@ function RowToggle({ icon, label, value, onChange, color, highlight }: {
         backgroundColor: highlight && value ? 'rgba(249,115,22,0.06)' : 'transparent',
       }}>
       <div className="flex items-center gap-2">
-        <span className="text-base">{icon}</span>
         <span className="text-sm" style={{ color: D.ink }}>{label}</span>
       </div>
       <Toggle value={value} onChange={onChange} color={color} />
@@ -368,7 +367,6 @@ export default function SubscriptionsPage() {
             {upcoming.map(s => (
               <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
                 style={{ backgroundColor: D.bg, color: D.accent, border: `1px solid var(--subtle)` }}>
-                {s.notify && <span>🔔</span>}
                 <span>{s.name}</span>
                 <span>{s.next_charge_date}</span>
                 <span>（{s.days === 0 ? '今天' : `${s.days} 天後`}）</span>
@@ -396,7 +394,6 @@ export default function SubscriptionsPage() {
                     <div className="flex items-center gap-1.5">
                       {s.is_free_trial && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(249,115,22,0.15)', color: '#f97316' }}>試用</span>}
                       {s.subscription_type === 'one_time' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(99,102,241,0.15)', color: '#6366f1' }}>買斷</span>}
-                      {s.plan_type === 'family' && <span className="text-[10px]">👨‍👩‍👧</span>}
                       {s.name}
                     </div>
                   </td>
@@ -508,7 +505,7 @@ export default function SubscriptionsPage() {
               </p>
               <button onClick={() => setShowForm(false)}
                 className="w-7 h-7 flex items-center justify-center rounded-full text-sm transition-opacity hover:opacity-60"
-                style={{ backgroundColor: D.bg, color: D.muted }}>✕</button>
+                style={{ backgroundColor: D.bg, color: D.muted }}>×</button>
             </div>
 
             {/* Scrollable body */}
@@ -545,8 +542,8 @@ export default function SubscriptionsPage() {
                   <select value={draft.currency} onChange={e => set('currency', e.target.value)}
                     className="rounded-xl px-3 py-2.5 text-sm focus:outline-none"
                     style={{ backgroundColor: D.bg, color: D.ink, border: `1px solid var(--subtle)` }}>
-                    <option value="TWD">🇹🇼 TWD</option>
-                    <option value="USD">🇺🇸 USD</option>
+                    <option value="TWD">TWD</option>
+                    <option value="USD">USD</option>
                   </select>
                 </div>
               </div>
@@ -610,7 +607,7 @@ export default function SubscriptionsPage() {
               {/* End date toggle */}
               {draft.subscription_type !== 'one_time' && (
                 <>
-                  <RowToggle icon="📅" label="使用結束日期" value={showEndDate} onChange={setShowEndDate} />
+                  <RowToggle label="使用結束日期" value={showEndDate} onChange={setShowEndDate} />
                   {showEndDate && (
                     <input type="date" value={draft.end_date ?? ''}
                       onChange={e => set('end_date', e.target.value || null)}
@@ -621,7 +618,7 @@ export default function SubscriptionsPage() {
               )}
 
               {/* Free trial */}
-              <RowToggle icon="⏱️" label="免費試用"
+              <RowToggle label="免費試用"
                 value={draft.is_free_trial ?? false}
                 onChange={v => set('is_free_trial', v)}
                 color="#f97316" highlight />
@@ -657,7 +654,6 @@ export default function SubscriptionsPage() {
               <div className="rounded-xl overflow-hidden" style={{ border: `1px solid var(--subtle)` }}>
                 <div className="flex items-center justify-between px-3 py-3">
                   <div className="flex items-center gap-2">
-                    <span className="text-base">🔔</span>
                     <span className="text-sm" style={{ color: D.ink }}>通知</span>
                   </div>
                   <Toggle value={draft.notify ?? true} onChange={v => set('notify', v)} color="#4f9cf9" />
@@ -707,7 +703,7 @@ export default function SubscriptionsPage() {
                 <button onClick={save}
                   className="flex-1 py-3 rounded-xl text-sm font-semibold transition-opacity hover:opacity-80"
                   style={{ backgroundColor: '#4f6ef7', color: '#fff' }}>
-                  ✓ {editing ? '儲存' : '新增'}
+                  {editing ? '儲存' : '新增'}
                 </button>
               </div>
             </div>
