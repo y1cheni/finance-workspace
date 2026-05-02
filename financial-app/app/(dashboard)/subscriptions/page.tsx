@@ -184,7 +184,20 @@ export default function SubscriptionsPage() {
 
   useEffect(() => {
     supabase.from('subscriptions').select('*').order('name').then(({ data }) => {
-      setSubs((data ?? []) as Sub[])
+      const loaded = (data ?? []) as Sub[]
+      const now = new Date()
+
+      // Auto-advance any past next_charge_date based on billing cycle
+      const corrected = loaded.map(s => {
+        if (!s.active || !s.next_charge_date || s.subscription_type === 'one_time') return s
+        const d = new Date(s.next_charge_date + 'T00:00:00')
+        if (d >= now) return s
+        const newDate = calcNextDate(s.next_charge_date, s.billing_cycle)
+        supabase.from('subscriptions').update({ next_charge_date: newDate }).eq('id', s.id)
+        return { ...s, next_charge_date: newDate }
+      })
+
+      setSubs(corrected)
       setLoading(false)
     })
   }, [])
@@ -249,7 +262,7 @@ export default function SubscriptionsPage() {
   const upcoming = subs
     .filter(s => s.active && s.next_charge_date && s.subscription_type !== 'one_time')
     .map(s => ({ ...s, days: daysUntil(s.next_charge_date) }))
-    .filter(s => (s.days ?? 99) <= 30)
+    .filter(s => (s.days ?? 99) >= 0 && (s.days ?? 99) <= 30)
     .sort((a, b) => (a.days ?? 0) - (b.days ?? 0))
 
   const catData = useMemo(() => {
@@ -395,8 +408,7 @@ export default function SubscriptionsPage() {
                 <tr key={s.id} style={{ borderBottom: `1px solid var(--subtle)`, opacity: s.active ? 1 : 0.4 }}>
                   <td className="py-2 pr-4 font-medium" style={{ color: D.ink }}>
                     <div className="flex items-center gap-1.5">
-                      {s.is_free_trial && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(249,115,22,0.15)', color: '#f97316' }}>試用</span>}
-                      {s.subscription_type === 'one_time' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(99,102,241,0.15)', color: '#6366f1' }}>買斷</span>}
+                      {s.subscription_type === 'one_time' && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'var(--subtle)', color: 'var(--muted)' }}>買斷</span>}
                       {s.name}
                     </div>
                   </td>
@@ -619,12 +631,6 @@ export default function SubscriptionsPage() {
                   )}
                 </>
               )}
-
-              {/* Free trial */}
-              <RowToggle label="免費試用"
-                value={draft.is_free_trial ?? false}
-                onChange={v => set('is_free_trial', v)}
-                color="#f97316" highlight />
 
               {/* Payment method */}
               <div>
