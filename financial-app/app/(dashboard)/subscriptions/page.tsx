@@ -332,10 +332,13 @@ export default function SubscriptionsPage() {
                 <Pie data={catData} cx="40%" cy="50%" outerRadius={80} innerRadius={40} dataKey="value" paddingAngle={2}>
                   {catData.map((entry, i) => <Cell key={i} fill={catColor(entry.name, i)} />)}
                 </Pie>
-                <Tooltip formatter={(v: any) => fmt(Number(v))} contentStyle={tooltipStyle} />
+                <Tooltip formatter={(v: unknown) => fmt(Number(v))} contentStyle={tooltipStyle} />
                 <Legend layout="vertical" align="right" verticalAlign="middle"
                   wrapperStyle={{ fontSize: 11 }}
-                  formatter={(value, entry: any) => `${value} ${fmt(entry.payload.value)}`} />
+                  formatter={(value, entry: unknown) => {
+                    const e = entry as { payload?: { value: number } }
+                    return `${value} ${fmt(e.payload?.value ?? 0)}`
+                  }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -349,10 +352,10 @@ export default function SubscriptionsPage() {
                   tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="name" width={72}
                   tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(v: any) => fmt(Number(v))} contentStyle={tooltipStyle} />
+                <Tooltip formatter={(v: unknown) => fmt(Number(v))} contentStyle={tooltipStyle} />
                 <Bar dataKey="月費" fill="var(--accent)" fillOpacity={0.85} radius={[0, 3, 3, 0]}
                   label={{ position: 'right', fontSize: 10, fill: 'var(--muted)',
-                    formatter: (v: any) => v > 0 ? `${v}` : '' }} />
+                    formatter: (v: unknown) => Number(v) > 0 ? `${v}` : '' }} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -415,11 +418,11 @@ export default function SubscriptionsPage() {
                   </td>
                   <td className="py-2">
                     <div className="flex gap-2">
-                      <button onClick={() => toggle(s)} className="text-xs transition-opacity hover:opacity-50" style={{ color: D.muted }}>
+                      <button onClick={() => toggle(s)} className="text-xs transition-opacity hover:opacity-70" style={{ color: D.muted }}>
                         {s.active ? '停用' : '啟用'}
                       </button>
-                      <button onClick={() => openEdit(s)} className="text-xs transition-opacity hover:opacity-50" style={{ color: D.muted }}>編輯</button>
-                      <button onClick={() => del(s.id)} className="text-xs transition-opacity hover:opacity-50" style={{ color: D.danger }}>刪除</button>
+                      <button onClick={() => openEdit(s)} className="text-xs transition-opacity hover:opacity-70" style={{ color: D.muted }}>編輯</button>
+                      <button onClick={() => del(s.id)} className="text-xs transition-opacity hover:opacity-70" style={{ color: D.danger }}>刪除</button>
                     </div>
                   </td>
                 </tr>
@@ -656,7 +659,7 @@ export default function SubscriptionsPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm" style={{ color: D.ink }}>通知</span>
                   </div>
-                  <Toggle value={draft.notify ?? true} onChange={v => set('notify', v)} color="#4f9cf9" />
+                  <Toggle value={draft.notify ?? true} onChange={v => set('notify', v)} color={D.accent} />
                 </div>
                 {(draft.notify ?? true) && (
                   <div className="flex items-center justify-between px-3 py-2.5"
@@ -701,8 +704,8 @@ export default function SubscriptionsPage() {
                   取消
                 </button>
                 <button onClick={save}
-                  className="flex-1 py-3 rounded-xl text-sm font-semibold transition-opacity hover:opacity-80"
-                  style={{ backgroundColor: '#4f6ef7', color: '#fff' }}>
+                  className="flex-1 py-3 rounded-xl text-sm font-semibold transition-opacity hover:opacity-70"
+                  style={{ backgroundColor: D.ink, color: D.bg }}>
                   {editing ? '儲存' : '新增'}
                 </button>
               </div>
