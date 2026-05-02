@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Grep",
+      "Glob",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git checkout *)",
+      "Bash(git branch*)",
+      "Bash(git push origin develop)",
+      "Bash(npm run *)",
+      "Bash(ls *)",
+      "Bash(find . *)",
+      "Bash(mkdir *)",
+      "Bash(./node_modules/.bin/tsc*)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force *)",
+      "Bash(curl * | sh)",
+      "Bash(DROP TABLE *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash(git commit *)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd financial-app && ./node_modules/.bin/tsc --noEmit && npm run lint"
+          }
+        ]
+      }
+    ]
+  }
+}
