@@ -144,8 +144,8 @@ function Toggle({ value, onChange, color = 'var(--accent)' }: {
     <button onClick={() => onChange(!value)}
       className="relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200"
       style={{ backgroundColor: value ? color : 'var(--subtle)' }}>
-      <span className="absolute top-[3px] w-[18px] h-[18px] rounded-full bg-white shadow transition-transform duration-200"
-        style={{ transform: value ? 'translateX(22px)' : 'translateX(3px)' }} />
+      <span className="absolute top-[3px] w-[18px] h-[18px] rounded-full bg-white shadow transition-all duration-200"
+        style={{ left: value ? '22px' : '3px' }} />
     </button>
   )
 }
